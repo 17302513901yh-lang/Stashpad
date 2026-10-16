@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import { parseMemory } from "./memory-format.mjs";
 import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
 import { serveMcp } from "./mcp.mjs";
+import { runEval } from "./eval.mjs";
 import {
   StoreError,
   acceptPending,
@@ -29,6 +30,7 @@ export const USAGE = `Usage:
   stashpad accept <id>
   stashpad reject <id> [--reason "<why>"]
   stashpad audit [--json]
+  stashpad eval [--json]       run the fixed checks and baselines in a temporary store
   stashpad mcp                 serve the five agent tools over stdio (for MCP clients)
 
 Notes:
@@ -146,6 +148,24 @@ function cmdReject(io, dir, id, values) {
   const path = rejectPending(dir, id, values.reason ?? null);
   io.stdout(`Rejected ${id}. Kept for the record in ${path}`);
   return 0;
+}
+
+function cmdEval(io, values) {
+  const report = runEval();
+  if (values.json) {
+    io.stdout(JSON.stringify(report, null, 2));
+  } else {
+    io.stdout(`Stashpad eval (${report.data})`);
+    io.stdout(`Models: ${report.models}`);
+    for (const c of report.cases) {
+      io.stdout(`${c.passed ? "PASS" : "FAIL"}  ${c.name}  (${c.detail})`);
+    }
+    io.stdout("Metrics:");
+    for (const [key, value] of Object.entries(report.metrics)) io.stdout(`  ${key}: ${value}`);
+    io.stdout(report.notes);
+    io.stdout(report.all_passed ? "All checks passed." : "Some checks failed. See FAIL lines above.");
+  }
+  return report.all_passed ? 0 : 1;
 }
 
 function cmdAudit(io, dir, values) {
@@ -294,6 +314,8 @@ export async function run(argv, io = defaultIo()) {
       case "forget":
         if (!id) return usageError(io, 'forget needs an id, for example: stashpad forget db-choice --reason "outdated"');
         return cmdForget(io, dir, id, values);
+      case "eval":
+        return cmdEval(io, values);
       case "mcp":
         await serveMcp({ dir, input: process.stdin, output: process.stdout });
         return 0;
