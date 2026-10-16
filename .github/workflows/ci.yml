@@ -21,4 +21,10 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm test
       - run: npm run build
-      - run: npm run bench
+      - name: Search benchmark
+        run: npm run bench | tee bench-result.txt
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ matrix.os }}-node${{ matrix.node }}
+          path: bench-result.txt
