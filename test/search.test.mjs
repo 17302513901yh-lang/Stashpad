@@ -134,6 +134,23 @@ test("ended memories are hidden unless --all is given", async () => {
   assert.equal(JSON.parse(shown.out[0])[0].id, "db-choice-v1");
 });
 
+test("plural and singular forms find each other", async () => {
+  const dir = freshDirWithNotes();
+  for (const query of ["tool", "tools"]) {
+    const { io, out } = harness();
+    assert.equal(await run(["search", query, "--json", "--dir", dir], io), 0);
+    const ids = JSON.parse(out[0]).map((r) => r.id);
+    assert.ok(ids.includes("lang-node"), `"${query}" should find lang-node, got ${ids}`);
+  }
+  assert.equal(bm25Rank([{ id: "a", text: "one policy" }], "policies")[0].id, "a");
+  assert.equal(bm25Rank([{ id: "a", text: "a dependency" }], "dependencies")[0].id, "a");
+});
+
+test("words that end in s but are not plurals still match themselves", () => {
+  assert.equal(bm25Rank([{ id: "a", text: "access and class notes" }], "class")[0].id, "a");
+  assert.equal(bm25Rank([{ id: "a", text: "access and class notes" }], "access")[0].id, "a");
+});
+
 test("bm25Rank gives no results for a query without matching terms", () => {
   assert.deepEqual(bm25Rank([{ id: "a", text: "hello world" }], "zebra"), []);
   assert.deepEqual(bm25Rank([{ id: "a", text: "hello world" }], "!!"), []);

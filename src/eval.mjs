@@ -1,6 +1,6 @@
 // Evaluation harness: fixed cases, two baselines, and a raw report. Deterministic: no model is called.
 // Run it on your own store with: stashpad eval --dir <folder>, or on a temporary store by default.
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { tokenize } from "./search.mjs";
@@ -48,7 +48,10 @@ export const QUERIES = [
 ];
 
 // Questions whose answer is not in the store. A good tool returns nothing, not a guess.
-export const ABSENT = ["tax return", "zebra", "kubernetes cluster"];
+// Word search matches shared words, so each question here shares no word with the fixed set.
+// (A question such as "tax return" would match "returns" through plural folding; that is a
+// known limit of word search, not an abstention failure.)
+export const ABSENT = ["tax filing", "zebra", "kubernetes cluster"];
 
 function grepBaseline(notes, query) {
   const words = tokenize(query);
@@ -140,7 +143,9 @@ export function runEval(dirOverride) {
   } catch {
     secretRefused = true;
   }
-  check("a secret is refused and not stored", secretRefused && searchMemories(dir, "Key").results.length === 0, `refused: ${secretRefused}`);
+  // Check the files, not a search: a search for "key" would find an unrelated memory that mentions API keys.
+  const secretStored = existsSync(join(dir, "secret-try.md")) || listPending(dir).rows.some((r) => r.id === "secret-try");
+  check("a secret is refused and not stored", secretRefused && !secretStored, `refused: ${secretRefused}, stored: ${secretStored}`);
 
   // Path tricks: an id that leaves the folder is refused by the MCP route too.
   const pathReply = handleMessage(

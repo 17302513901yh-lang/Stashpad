@@ -10,13 +10,25 @@ export function tokenize(text) {
     .filter((token) => token.length >= 2);
 }
 
+// Light plural folding, so "tools" finds "tool" and "policies" finds "policy".
+// It is deliberately small: it is not a full stemmer, and it is applied to both query and text.
+export function stem(token) {
+  if (token.length > 4 && token.endsWith("ies")) return `${token.slice(0, -3)}y`;
+  if (token.length > 3 && token.endsWith("s") && !token.endsWith("ss")) return token.slice(0, -1);
+  return token;
+}
+
+function termsOf(text) {
+  return tokenize(text).map(stem);
+}
+
 // docs: [{ id, text }]. Returns [{ id, score }] for documents that match at least one term,
 // best match first. Ties are ordered by id so results are stable.
 export function bm25Rank(docs, query) {
-  const queryTerms = [...new Set(tokenize(query))];
+  const queryTerms = [...new Set(termsOf(query))];
   if (queryTerms.length === 0) return [];
 
-  const tokenized = docs.map((doc) => tokenize(doc.text));
+  const tokenized = docs.map((doc) => termsOf(doc.text));
   const count = docs.length;
   const totalLength = tokenized.reduce((sum, tokens) => sum + tokens.length, 0);
   const avgLength = count > 0 && totalLength > 0 ? totalLength / count : 1;

@@ -34,4 +34,5 @@ The backend stays optional. The Markdown files remain the source of truth, and t
 ## Open items
 
 - Windows and macOS measurements. The CI runs `npm run bench` on all three systems and uploads the output. Those results still need to be read and copied into this file.
-- Stemming. Searching "tool" does not find "tools". This is a known gap of the current version.
+- Stemming. Plural folding is in: "tools" finds "tool" and "policies" finds "policy". It is not a full stemmer. Synonyms ("database" for "SQLite") are still not found, and a full stemmer would need a decision of its own.
+- Word matching adds false hits. The eval caught this when plural folding let "return" match "returns". The absent questions in `stashpad eval` therefore share no word with the fixed set.

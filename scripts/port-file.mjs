@@ -1,8 +1,11 @@
 // Command line front end for scripts/port-lib.mjs. Example:
-// node scripts/port-file.mjs --project graphiti --source-url https://github.com/getzep/graphiti \
-//   --commit 1a2b3c4 --license Apache-2.0 --copyright "Copyright 2025 Zep" \
-//   --upstream-path graphiti_core/utils/validity.py --file ../graphiti/graphiti_core/utils/validity.py \
-//   --dest graphiti/validity.mjs --license-file ../graphiti/LICENSE --modified-note "ported to JavaScript, names kept"
+// npm run port -- --project graphiti --source-url https://github.com/getzep/graphiti \
+//   --commit <full commit hash> --license Apache-2.0 --copyright "Copyright 2024, Zep Software, Inc." \
+//   --upstream-path graphiti_core/utils/maintenance/edge_operations.py \
+//   --file ../graphiti/graphiti_core/utils/maintenance/edge_operations.py \
+//   --body-file my-translation.mjs --dest graphiti/temporal.mjs \
+//   --license-file ../graphiti/LICENSE --modified-note "Python translated to JavaScript, two rules kept"
+// Leave out --body-file to copy the original file as it is. The license is checked before anything is read.
 import { parseArgs } from "node:util";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

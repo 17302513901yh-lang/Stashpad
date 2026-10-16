@@ -15,6 +15,7 @@ and a person decides what is kept. Read this once, then use the table below.
 
 If your client does not run MCP, use the CLI. The commands are:
 `search`, `get`, `save`, `forget`, `history`, `review`, `accept`, `reject`, `audit`.
+`eval` checks the tool itself. `import` is for a person: it queues an export for review.
 Add `--json` for machine-readable output.
 
 Only a person runs `accept` and `reject`. If you have a shell, do not accept your own proposals.
@@ -80,6 +81,7 @@ Errors say what to do next. Examples:
 
 ## Limits (honest)
 
-- Search matches words, not meaning. "tools" does not find "tool" yet.
+- Search matches words, not meaning. Plurals match ("tools" finds "tool"), but a synonym does not ("database" does not find "SQLite").
+- A shared common word can match. Search a specific term, not a whole sentence.
 - Stashpad does not store anything until a person accepts agent proposals.
 - Stashpad is local. It does not sync between machines.

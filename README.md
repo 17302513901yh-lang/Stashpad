@@ -50,6 +50,15 @@ stashpad audit
 
 Five tools: `stashpad_search`, `stashpad_get`, `stashpad_recent`, `stashpad_save`, `stashpad_forget`.
 
+## Check it, import into it
+
+```bash
+stashpad eval                 # fixed checks and baselines; no language model is called
+stashpad import notes.jsonl   # queue memories from an export; they wait for review
+```
+
+Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `source_ref`) or as plain text, one fact per paragraph.
+
 ## Principles
 
 - Plain files first. The files are the source of truth.
@@ -61,7 +70,8 @@ Five tools: `stashpad_search`, `stashpad_get`, `stashpad_recent`, `stashpad_save
 
 - [Memory file format](docs/FORMAT.md)
 - [Search backend decision](docs/decisions/search-backend.md)
-- [Third-party notices](THIRD_PARTY_NOTICES.md)
+- [No vector search for now](docs/decisions/vectors.md)
+- [Third-party notices](THIRD_PARTY_NOTICES.md). Code is ported with `npm run port`, which refuses any license except MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause and ISC.
 
 ## License
 
