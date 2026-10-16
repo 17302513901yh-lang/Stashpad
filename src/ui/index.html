@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="stashpad-token" content="__TOKEN__">
+  <title>Stashpad</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Stashpad</h1>
+    <nav aria-label="Weergave">
+      <button type="button" data-view="pending" class="active">Wacht op beoordeling</button>
+      <button type="button" data-view="search">Geheugen</button>
+      <button type="button" data-view="audit">Logboek</button>
+    </nav>
+  </header>
+  <p id="status" class="status" role="status"></p>
+  <main id="main"></main>
+  <script src="/app.js"></script>
+</body>
+</html>

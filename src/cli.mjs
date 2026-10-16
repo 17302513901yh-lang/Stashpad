@@ -9,6 +9,7 @@ import { importMemories } from "./importer.mjs";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { exportMemories } from "./export.mjs";
 import { archiveSource } from "./sources.mjs";
+import { openInBrowser, startUi } from "./ui.mjs";
 import {
   StoreError,
   acceptPending,
@@ -38,6 +39,7 @@ export const USAGE = `Usage:
   stashpad export [--all] [--out <file>]   write memories as JSON Lines (current only; --all adds ended ones)
   stashpad eval [--json]       run the fixed checks and baselines in a temporary store
   stashpad mcp                 serve the five agent tools over stdio (for MCP clients)
+  stashpad ui [--port N] [--open]   review waiting memories in a page on this computer (Ctrl+C stops it)
 
 Notes:
   A save with --source-type user goes straight into the store.
@@ -68,6 +70,8 @@ const OPTIONS = {
   reason: { type: "string" },
   "source-file": { type: "string" },
   out: { type: "string" },
+  port: { type: "string" },
+  open: { type: "boolean" },
   all: { type: "boolean" },
   json: { type: "boolean" },
   dir: { type: "string" },
@@ -199,6 +203,20 @@ function cmdEval(io, values) {
     io.stdout(report.all_passed ? "All checks passed." : "Some checks failed. See FAIL lines above.");
   }
   return report.all_passed ? 0 : 1;
+}
+
+async function cmdUi(io, dir, values) {
+  const port = values.port === undefined ? 4317 : Number(values.port);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    return usageError(io, "--port must be a whole number from 0 to 65535");
+  }
+  const ui = await startUi({ dir, port });
+  io.stdout(`Stashpad review page: ${ui.url}`);
+  io.stdout(`Only this computer can reach it. It stays open until you press Ctrl+C. Store: ${dir}`);
+  if (values.open) openInBrowser(ui.url);
+  // Keep serving until the process is stopped.
+  await new Promise(() => {});
+  return 0;
 }
 
 function cmdExport(io, dir, values) {
@@ -382,6 +400,8 @@ export async function run(argv, io = defaultIo()) {
         return cmdReject(io, dir, id, values);
       case "export":
         return cmdExport(io, dir, values);
+      case "ui":
+        return await cmdUi(io, dir, values);
       case "audit":
         return cmdAudit(io, dir, values);
       case "history":

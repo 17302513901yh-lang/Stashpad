@@ -295,6 +295,42 @@ export function readEntries(dir) {
   return readAll(dir);
 }
 
+// One waiting write in full, for the review page. Ending requests show their target and reason.
+export function readPending(dir, id) {
+  const path = pendingPath(dir, id);
+  if (path.endsWith(".json")) {
+    const request = JSON.parse(readFileSync(path, "utf8"));
+    return {
+      id,
+      kind: "forget",
+      source_type: request.source_type,
+      source_ref: request.source_ref,
+      valid_from: null,
+      supersedes: null,
+      target: request.target,
+      text: `Beëindigen van "${request.target}". Reden: ${request.reason}`,
+      conflicts: [],
+      flagged: findInstructionLikeText(request.reason),
+    };
+  }
+  assertSafeFile(path);
+  const text = readFileSync(path, "utf8");
+  const { meta, errors } = validateMemory(text, id);
+  if (errors.length > 0) throw new StoreError(`"${id}" has a problem: ${errors[0]}`);
+  const { body } = parseMemory(text);
+  return {
+    id,
+    kind: meta.kind,
+    source_type: meta.source_type,
+    source_ref: meta.source_ref,
+    valid_from: meta.valid_from,
+    supersedes: meta.supersedes,
+    text: body,
+    conflicts: findConflicts(dir, meta, body),
+    flagged: findInstructionLikeText(body),
+  };
+}
+
 // Current memories of the same kind that share at least two meaningful words with this one.
 // Each is marked with whether accepting this memory would end it (same rule as the Graphiti port).
 function findConflicts(dir, meta, body) {

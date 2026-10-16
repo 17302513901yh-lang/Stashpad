@@ -72,6 +72,15 @@ stashpad save <id> --kind fact --source-type user --source-file notes.txt --text
 
 `stashpad review` also shows when a waiting memory may conflict with a current one, and whether accepting it would end that one.
 
+## Review in a page
+
+```bash
+stashpad ui            # opens http://127.0.0.1:4317/ to review, search and read the audit log
+stashpad ui --open     # the same, and opens the page in your browser
+```
+
+Only this computer can reach the page. It is a small local page with no outside resources. See [the decision](docs/decisions/ui.md).
+
 Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `source_ref`) or as plain text, one fact per paragraph.
 
 ## Principles
