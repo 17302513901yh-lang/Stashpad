@@ -5,6 +5,8 @@ import { parseMemory } from "./memory-format.mjs";
 import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
 import { serveMcp } from "./mcp.mjs";
 import { runEval } from "./eval.mjs";
+import { importMemories } from "./importer.mjs";
+import { readFileSync } from "node:fs";
 import {
   StoreError,
   acceptPending,
@@ -30,6 +32,7 @@ export const USAGE = `Usage:
   stashpad accept <id>
   stashpad reject <id> [--reason "<why>"]
   stashpad audit [--json]
+  stashpad import <file> [--format jsonl|text] [--source-ref "<source>"]   queue memories from an export
   stashpad eval [--json]       run the fixed checks and baselines in a temporary store
   stashpad mcp                 serve the five agent tools over stdio (for MCP clients)
 
@@ -148,6 +151,20 @@ function cmdReject(io, dir, id, values) {
   const path = rejectPending(dir, id, values.reason ?? null);
   io.stdout(`Rejected ${id}. Kept for the record in ${path}`);
   return 0;
+}
+
+function cmdImport(io, dir, file, values) {
+  const format = values.format ?? (file.endsWith(".jsonl") ? "jsonl" : "text");
+  const content = readFileSync(file, "utf8");
+  const { queued, skipped } = importMemories(dir, content, {
+    format,
+    sourceRef: values["source-ref"] ?? `import: ${file}`,
+  });
+  for (const item of skipped) io.stderr(`skipped ${item.id}: ${item.reason}`);
+  io.stdout(
+    `Queued ${queued.length} memories for review from ${file}. Nothing is searchable until a person accepts them (stashpad review).`,
+  );
+  return skipped.length > 0 && queued.length === 0 ? 1 : 0;
 }
 
 function cmdEval(io, values) {
@@ -316,6 +333,9 @@ export async function run(argv, io = defaultIo()) {
         return cmdForget(io, dir, id, values);
       case "eval":
         return cmdEval(io, values);
+      case "import":
+        if (!id) return usageError(io, "import needs a file, for example: stashpad import notes.jsonl");
+        return cmdImport(io, dir, id, values);
       case "mcp":
         await serveMcp({ dir, input: process.stdin, output: process.stdout });
         return 0;
