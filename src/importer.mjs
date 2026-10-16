@@ -19,6 +19,7 @@ export function parseImport(content, format) {
           text: String(item.text ?? ""),
           validFrom: item.valid_from ?? undefined,
           sourceRef: item.source_ref ?? undefined,
+          validTo: item.valid_to ?? undefined,
         });
       } catch {
         errors.push({ line: index + 1, reason: "not valid JSON" });
@@ -50,6 +51,11 @@ export function importMemories(dir, content, { format, sourceRef, today }) {
   const skipped = errors.map((e) => ({ id: `line ${e.line}`, reason: e.reason }));
 
   for (const item of items) {
+    // An ended memory from an export is history, not a current fact, so it is not imported as one.
+    if (item.validTo) {
+      skipped.push({ id: item.id || "(no id)", reason: "already ended in the export; only current facts are imported" });
+      continue;
+    }
     try {
       saveMemory(
         dir,

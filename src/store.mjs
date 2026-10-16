@@ -22,7 +22,8 @@ import {
   parseMemory,
   validateMemory,
 } from "./memory-format.mjs";
-import { bm25Rank } from "./search.mjs";
+import { bm25Rank, keyTerms } from "./search.mjs";
+import { applyTemporalInvalidation } from "../third_party/graphiti/temporal.mjs";
 import { findInstructionLikeText, findSecrets } from "./security.mjs";
 import { lstatSync } from "node:fs";
 
@@ -289,6 +290,37 @@ function applyForget(dir, id, path) {
   appendAudit(dir, { action: "forgotten", id, target: request.target, reason: request.reason });
 }
 
+// Every valid memory with its full text, for export. Files that break the format go to skipped.
+export function readEntries(dir) {
+  return readAll(dir);
+}
+
+// Current memories of the same kind that share at least two meaningful words with this one.
+// Each is marked with whether accepting this memory would end it (same rule as the Graphiti port).
+function findConflicts(dir, meta, body) {
+  const today = todayIso();
+  const mine = new Set(keyTerms(body));
+  const { entries } = readAll(dir);
+  const candidates = entries.filter(
+    (entry) =>
+      entry.id !== meta.id &&
+      isCurrent(entry.meta, today) &&
+      entry.meta.kind === meta.kind &&
+      keyTerms(entry.body).filter((term) => mine.has(term)).length >= 2,
+  );
+  if (candidates.length === 0) return [];
+
+  const copies = candidates.map((entry) => ({
+    id: entry.id,
+    valid_from: entry.meta.valid_from,
+    valid_to: entry.meta.valid_to,
+  }));
+  const ended = new Set(
+    applyTemporalInvalidation({ id: meta.id, valid_from: meta.valid_from, valid_to: null }, copies).map((c) => c.id),
+  );
+  return candidates.map((entry) => ({ id: entry.id, would_end: ended.has(entry.id) }));
+}
+
 // Waiting writes, newest name order. Files that break the format go to skipped.
 export function listPending(dir) {
   const rows = [];
@@ -317,6 +349,7 @@ export function listPending(dir) {
       supersedes: meta.supersedes,
       summary: body.split("\n")[0],
       flagged: findInstructionLikeText(body),
+      conflicts: findConflicts(dir, meta, body),
     });
   }
   for (const name of readdirSync(folder).filter((n) => n.startsWith("forget-") && n.endsWith(".json")).sort()) {
@@ -330,6 +363,7 @@ export function listPending(dir) {
         supersedes: null,
         summary: `end "${request.target}": ${request.reason}`,
         flagged: findInstructionLikeText(request.reason),
+        conflicts: [],
       });
     } catch {
       skipped.push({ file: name, reason: "cannot read this ending request" });

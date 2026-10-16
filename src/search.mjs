@@ -22,6 +22,11 @@ function termsOf(text) {
   return tokenize(text).map(stem);
 }
 
+// Meaningful words for comparing two memories: stemmed, and at least four letters long.
+export function keyTerms(text) {
+  return termsOf(text).filter((term) => term.length >= 4);
+}
+
 // docs: [{ id, text }]. Returns [{ id, score }] for documents that match at least one term,
 // best match first. Ties are ordered by id so results are stable.
 export function bm25Rank(docs, query) {

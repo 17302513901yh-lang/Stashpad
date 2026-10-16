@@ -6,7 +6,9 @@ import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
 import { serveMcp } from "./mcp.mjs";
 import { runEval } from "./eval.mjs";
 import { importMemories } from "./importer.mjs";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { exportMemories } from "./export.mjs";
+import { archiveSource } from "./sources.mjs";
 import {
   StoreError,
   acceptPending,
@@ -33,6 +35,7 @@ export const USAGE = `Usage:
   stashpad reject <id> [--reason "<why>"]
   stashpad audit [--json]
   stashpad import <file> [--format jsonl|text] [--source-ref "<source>"]   queue memories from an export
+  stashpad export [--all] [--out <file>]   write memories as JSON Lines (current only; --all adds ended ones)
   stashpad eval [--json]       run the fixed checks and baselines in a temporary store
   stashpad mcp                 serve the five agent tools over stdio (for MCP clients)
 
@@ -44,6 +47,8 @@ Options:
   --dir <folder>      where memories live (default: $STASHPAD_DIR, or ./.stashpad/memories)
   --text -            read the memory text from standard input
   --supersedes <id>   the memory this one replaces; that one gets an end date
+  --source-file <path> keep a copy of the raw source in the store (up to 5 MB), linked from source_ref
+  --out <file>        write the export to a file instead of the screen (refuses to overwrite)
   --reason "<why>"    why a waiting memory was rejected (kept in the audit log)
   --limit N           most results to show for search (default 10)
   --all               include memories that have ended
@@ -61,6 +66,8 @@ const OPTIONS = {
   limit: { type: "string" },
   supersedes: { type: "string" },
   reason: { type: "string" },
+  "source-file": { type: "string" },
+  out: { type: "string" },
   all: { type: "boolean" },
   json: { type: "boolean" },
   dir: { type: "string" },
@@ -90,20 +97,25 @@ function usageError(io, message) {
 }
 
 async function cmdSave(io, dir, id, values) {
-  const missing = ["kind", "source-type", "source-ref", "text"].filter(
-    (name) => values[name] === undefined,
-  );
+  const required = ["kind", "source-type", "text"];
+  if (values["source-file"] === undefined) required.push("source-ref");
+  const missing = required.filter((name) => values[name] === undefined);
   if (missing.length > 0) {
     return usageError(io, `save needs: ${missing.map((m) => `--${m}`).join(", ")}`);
   }
 
   const content = values.text === "-" ? await io.readStdin() : values.text;
+  let sourceRef = values["source-ref"] ?? "";
+  if (values["source-file"] !== undefined) {
+    const raw = archiveSource(dir, values["source-file"]);
+    sourceRef = sourceRef === "" ? `raw: ${raw}` : `${sourceRef}; raw: ${raw}`;
+  }
   const result = saveMemory(dir, {
     id,
     kind: values.kind,
     text: content,
     sourceType: values["source-type"],
-    sourceRef: values["source-ref"],
+    sourceRef,
     validFrom: values["valid-from"],
     supersedes: values.supersedes ?? null,
   });
@@ -133,6 +145,10 @@ function cmdReview(io, dir, values) {
     const replaces = row.supersedes ? `  replaces ${row.supersedes}` : "";
     const flag = row.flagged ? "  [check: reads like an instruction]" : "";
     io.stdout(`${row.id}  ${row.kind}  from ${row.source_type}: ${row.source_ref}${replaces}  ${row.summary}${flag}`);
+    for (const conflict of row.conflicts ?? []) {
+      const effect = conflict.would_end ? " (accepting it ends that one)" : "";
+      io.stdout(`    may conflict with ${conflict.id}${effect}`);
+    }
   }
   return 0;
 }
@@ -183,6 +199,23 @@ function cmdEval(io, values) {
     io.stdout(report.all_passed ? "All checks passed." : "Some checks failed. See FAIL lines above.");
   }
   return report.all_passed ? 0 : 1;
+}
+
+function cmdExport(io, dir, values) {
+  const { text, count, skipped } = exportMemories(dir, { includeEnded: values.all === true });
+  for (const item of skipped) io.stderr(`skipped ${item.file}: ${item.reason}`);
+  if (values.out !== undefined) {
+    if (existsSync(values.out)) {
+      io.stderr(`refusing to overwrite ${values.out}. Choose another name.`);
+      return 1;
+    }
+    writeFileSync(values.out, text, { flag: "wx" });
+    io.stdout(`Exported ${count} memories to ${values.out}`);
+    return 0;
+  }
+  if (count === 0) io.stderr("No memories to export.");
+  else io.stdout(text.replace(/\n$/, ""));
+  return 0;
 }
 
 function cmdAudit(io, dir, values) {
@@ -347,6 +380,8 @@ export async function run(argv, io = defaultIo()) {
       case "reject":
         if (!id) return usageError(io, "reject needs an id, for example: stashpad reject agent-note");
         return cmdReject(io, dir, id, values);
+      case "export":
+        return cmdExport(io, dir, values);
       case "audit":
         return cmdAudit(io, dir, values);
       case "history":

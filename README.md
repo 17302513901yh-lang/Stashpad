@@ -64,9 +64,13 @@ Five tools: `stashpad_search`, `stashpad_get`, `stashpad_recent`, `stashpad_save
 ## Check it, import into it
 
 ```bash
-stashpad eval                 # fixed checks and baselines; no language model is called
-stashpad import notes.jsonl   # queue memories from an export; they wait for review
+stashpad eval                          # fixed checks and baselines; no language model is called
+stashpad import notes.jsonl            # queue memories from an export; they wait for review
+stashpad export --out memories.jsonl   # back up current memories as JSON Lines (--all adds ended ones)
+stashpad save <id> --kind fact --source-type user --source-file notes.txt --text "..."   # keeps a copy of the raw source
 ```
+
+`stashpad review` also shows when a waiting memory may conflict with a current one, and whether accepting it would end that one.
 
 Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `source_ref`) or as plain text, one fact per paragraph.
 
