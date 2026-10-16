@@ -2,16 +2,19 @@
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { parseMemory } from "./memory-format.mjs";
-import { StoreError, listMemories, readMemory, saveMemory } from "./store.mjs";
+import { StoreError, listMemories, readMemory, saveMemory, searchMemories } from "./store.mjs";
 
 export const USAGE = `Usage:
   stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD]
   stashpad get <id> [--json]
   stashpad list [--all] [--json]
+  stashpad search <words...> [--limit N] [--all] [--json]
 
 Options:
   --dir <folder>   where memories live (default: $STASHPAD_DIR, or ./.stashpad/memories)
   --text -         read the memory text from standard input
+  --limit N        most results to show for search (default 10)
+  --all            include memories that have ended
   --json           print machine-readable output
   --help           show this help
 
@@ -23,6 +26,7 @@ const OPTIONS = {
   "source-ref": { type: "string" },
   text: { type: "string" },
   "valid-from": { type: "string" },
+  limit: { type: "string" },
   all: { type: "boolean" },
   json: { type: "boolean" },
   dir: { type: "string" },
@@ -110,6 +114,38 @@ function cmdList(io, dir, values) {
   return 0;
 }
 
+function cmdSearch(io, dir, query, values) {
+  const text = query.join(" ").trim();
+  if (text === "") {
+    return usageError(io, 'search needs words, for example: stashpad search "database"');
+  }
+  const limit = values.limit === undefined ? 10 : Number(values.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    return usageError(io, "--limit must be a whole number from 1 to 100");
+  }
+
+  const { total, results, skipped } = searchMemories(dir, text, {
+    includeEnded: values.all === true,
+    limit,
+  });
+  for (const item of skipped) {
+    io.stderr(`skipped ${item.file}: ${item.reason}`);
+  }
+
+  if (values.json) {
+    io.stdout(JSON.stringify(results));
+    return 0;
+  }
+  if (results.length === 0) {
+    io.stdout(`0 of ${total} searched: no matches for "${text}". Try other words, or run "stashpad list".`);
+    return 0;
+  }
+  for (const row of results) {
+    io.stdout(`${row.score}  ${row.id}  ${row.kind}  ${row.summary}`);
+  }
+  return 0;
+}
+
 export async function run(argv, io = defaultIo()) {
   let parsed;
   try {
@@ -132,6 +168,8 @@ export async function run(argv, io = defaultIo()) {
 
   try {
     switch (command) {
+      case "search":
+        return cmdSearch(io, dir, positionals.slice(1), values);
       case "save":
         if (!id) return usageError(io, "save needs an id, for example: stashpad save db-choice ...");
         return await cmdSave(io, dir, id, values);

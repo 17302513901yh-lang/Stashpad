@@ -8,6 +8,7 @@ import {
   parseMemory,
   validateMemory,
 } from "./memory-format.mjs";
+import { bm25Rank } from "./search.mjs";
 
 export class StoreError extends Error {}
 
@@ -85,11 +86,11 @@ export function readMemory(dir, id) {
   return { path, text: readFileSync(path, "utf8") };
 }
 
-// Returns valid memories as rows. Files that break the format are listed in skipped.
-export function listMemories(dir, { includeEnded = false } = {}) {
-  const rows = [];
+// Reads every valid memory in the folder. Files that break the format go to skipped.
+function readAll(dir) {
+  const entries = [];
   const skipped = [];
-  if (!existsSync(dir)) return { rows, skipped };
+  if (!existsSync(dir)) return { entries, skipped };
 
   const names = readdirSync(dir).filter((name) => name.endsWith(".md")).sort();
   for (const name of names) {
@@ -101,15 +102,45 @@ export function listMemories(dir, { includeEnded = false } = {}) {
       continue;
     }
     const { meta, body } = parseMemory(text);
-    if (!includeEnded && meta.valid_to !== null) continue;
-    rows.push({
-      id,
-      kind: meta.kind,
-      valid_from: meta.valid_from,
-      valid_to: meta.valid_to,
-      trust: meta.trust,
-      summary: body.split("\n")[0],
-    });
+    entries.push({ id, meta, body });
   }
+  return { entries, skipped };
+}
+
+function summarize(entry) {
+  return {
+    id: entry.id,
+    kind: entry.meta.kind,
+    valid_from: entry.meta.valid_from,
+    valid_to: entry.meta.valid_to,
+    trust: entry.meta.trust,
+    summary: entry.body.split("\n")[0],
+  };
+}
+
+// Current memories only, unless includeEnded is true.
+export function listMemories(dir, { includeEnded = false } = {}) {
+  const { entries, skipped } = readAll(dir);
+  const rows = entries
+    .filter((entry) => includeEnded || entry.meta.valid_to === null)
+    .map(summarize);
   return { rows, skipped };
+}
+
+// Ranks memories against the query. total is how many memories were searched.
+export function searchMemories(dir, query, { includeEnded = false, limit = 10 } = {}) {
+  const { entries, skipped } = readAll(dir);
+  const searched = entries.filter((entry) => includeEnded || entry.meta.valid_to === null);
+  const docs = searched.map((entry) => ({
+    id: entry.id,
+    text: `${entry.id.replace(/-/g, " ")} ${entry.body}`,
+  }));
+  const byId = new Map(searched.map((entry) => [entry.id, entry]));
+
+  const ranked = bm25Rank(docs, query).slice(0, limit);
+  const results = ranked.map((hit) => ({
+    ...summarize(byId.get(hit.id)),
+    score: Math.round(hit.score * 100) / 100,
+  }));
+  return { total: searched.length, results, skipped };
 }
