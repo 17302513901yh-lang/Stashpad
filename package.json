@@ -1,0 +1,21 @@
+{
+  "name": "stashpad",
+  "version": "0.0.0",
+  "description": "Local-first memory and context holder for AI agents. Readable, editable, source-tracked.",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "third_party"
+  ]
+}
