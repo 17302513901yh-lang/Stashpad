@@ -56,7 +56,8 @@ test("an agent-written memory gets agent-inferred trust", async () => {
   const { io } = harness();
   const args = saveArgs(dir, "agent-guess", ["--source-type", "agent"]);
   assert.equal(await run(args, io), 0);
-  const text = readFileSync(join(dir, "agent-guess.md"), "utf8");
+  // Agent writes wait in pending/ until a person accepts them.
+  const text = readFileSync(join(dir, "pending", "agent-guess.md"), "utf8");
   assert.match(text, /^trust: agent-inferred$/m);
 });
 

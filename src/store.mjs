@@ -1,5 +1,19 @@
 // File-based store for Stashpad memories. No index: every read goes to the files.
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+// Layout in one folder:
+//   <id>.md      memories in the store (list and search read only these)
+//   pending/     writes from agents, tools and the web, waiting for a person to accept
+//   rejected/    pending writes a person rejected, kept for review
+//   audit.jsonl  one line per change: saved, queued, accepted, rejected
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import {
   REQUIRED_KEYS,
@@ -11,6 +25,10 @@ import {
 import { bm25Rank } from "./search.mjs";
 
 export class StoreError extends Error {}
+
+const PENDING = "pending";
+const REJECTED = "rejected";
+const AUDIT = "audit.jsonl";
 
 export function todayIso(now = new Date()) {
   const pad = (n) => String(n).padStart(2, "0");
@@ -31,9 +49,21 @@ function renderMemory(meta, body) {
   return lines.join("\n");
 }
 
-// Writes a new memory file. Never overwrites a memory. A changed fact is a new memory
-// that supersedes the old one: the old one gets valid_to and superseded_by.
-export function saveMemory(dir, input, today = todayIso()) {
+function appendAudit(dir, entry) {
+  mkdirSync(dir, { recursive: true });
+  appendFileSync(join(dir, AUDIT), `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`);
+}
+
+// Last `limit` audit entries, oldest first.
+export function readAudit(dir, limit = 50) {
+  const path = join(dir, AUDIT);
+  if (!existsSync(path)) return [];
+  const lines = readFileSync(path, "utf8").split("\n").filter((line) => line.trim() !== "");
+  return lines.slice(-limit).map((line) => JSON.parse(line));
+}
+
+// Builds and checks a new memory without writing anything.
+function buildMemory(input, today) {
   const { id, kind, text, sourceType, sourceRef, validFrom, supersedes = null } = input;
 
   if (!isValidId(id)) {
@@ -58,14 +88,20 @@ export function saveMemory(dir, input, today = todayIso()) {
     trust: TRUST_BY_SOURCE[sourceType],
     last_confirmed_at: today,
   };
-  const content = renderMemory(meta, text.trim());
+  const body = text.trim();
 
-  const { errors } = validateMemory(content, id);
+  const { errors } = validateMemory(renderMemory(meta, body), id);
   if (errors.length > 0) {
     throw new StoreError(`not saved, fix these first:\n- ${errors.join("\n- ")}`);
   }
+  return { meta, body };
+}
 
-  // Check everything before writing anything.
+// Writes a memory into the store. Never overwrites. If it supersedes another memory,
+// that one gets valid_to and superseded_by. Everything is checked before anything is written.
+function commitMemory(dir, meta, body) {
+  const { id, supersedes } = meta;
+
   let old = null;
   if (supersedes !== null) {
     const { text: oldText } = readMemory(dir, supersedes);
@@ -93,7 +129,7 @@ export function saveMemory(dir, input, today = todayIso()) {
       `memory "${id}" already exists. Pick a new id. A changed fact gets a new memory, not an edit.`,
     );
   }
-  writeFileSync(path, content, { flag: "wx" });
+  writeFileSync(path, renderMemory(meta, body), { flag: "wx" });
 
   if (old !== null) {
     try {
@@ -104,7 +140,104 @@ export function saveMemory(dir, input, today = todayIso()) {
       throw error;
     }
   }
+
+  appendAudit(dir, {
+    action: "saved",
+    id,
+    source_type: meta.source_type,
+    source_ref: meta.source_ref,
+    supersedes,
+  });
   return path;
+}
+
+// Writes a memory that an agent, tool or web page proposed. It waits in pending/.
+function queueForReview(dir, meta, body) {
+  const { id } = meta;
+  if (existsSync(filePath(dir, id))) {
+    throw new StoreError(`memory "${id}" already exists. Pick a new id.`);
+  }
+  const folder = join(dir, PENDING);
+  mkdirSync(folder, { recursive: true });
+  const path = join(folder, `${id}.md`);
+  if (existsSync(path)) {
+    throw new StoreError(`"${id}" is already waiting for review. Accept or reject it first with "stashpad review".`);
+  }
+  writeFileSync(path, renderMemory(meta, body), { flag: "wx" });
+  appendAudit(dir, { action: "queued", id, source_type: meta.source_type, source_ref: meta.source_ref });
+  return path;
+}
+
+// User memories go straight into the store. Anything from an agent, tool or the web is queued.
+export function saveMemory(dir, input, today = todayIso()) {
+  const { meta, body } = buildMemory(input, today);
+  if (meta.source_type !== "user") {
+    return { status: "queued", path: queueForReview(dir, meta, body) };
+  }
+  return { status: "saved", path: commitMemory(dir, meta, body) };
+}
+
+function pendingPath(dir, id) {
+  if (!isValidId(id)) {
+    throw new StoreError(`invalid id "${id}". Ids use lowercase letters, digits and hyphens.`);
+  }
+  const path = join(dir, PENDING, `${id}.md`);
+  if (!existsSync(path)) {
+    throw new StoreError(`nothing waiting for review under "${id}". Run "stashpad review" to see what is queued.`);
+  }
+  return path;
+}
+
+// Waiting writes, newest name order. Files that break the format go to skipped.
+export function listPending(dir) {
+  const rows = [];
+  const skipped = [];
+  const folder = join(dir, PENDING);
+  if (!existsSync(folder)) return { rows, skipped };
+
+  for (const name of readdirSync(folder).filter((n) => n.endsWith(".md")).sort()) {
+    const id = name.slice(0, -".md".length);
+    const text = readFileSync(join(folder, name), "utf8");
+    const { meta, errors } = validateMemory(text, id);
+    if (errors.length > 0) {
+      skipped.push({ file: name, reason: errors[0] });
+      continue;
+    }
+    rows.push({
+      id,
+      kind: meta.kind,
+      source_type: meta.source_type,
+      source_ref: meta.source_ref,
+      supersedes: meta.supersedes,
+      summary: parseMemory(text).body.split("\n")[0],
+    });
+  }
+  return { rows, skipped };
+}
+
+// Moves a waiting write into the store. If the store check fails, it stays in pending/.
+export function acceptPending(dir, id) {
+  const path = pendingPath(dir, id);
+  const text = readFileSync(path, "utf8");
+  const { meta, errors } = validateMemory(text, id);
+  if (errors.length > 0) {
+    throw new StoreError(`"${id}" cannot be accepted, fix it first:\n- ${errors.join("\n- ")}`);
+  }
+  const written = commitMemory(dir, meta, parseMemory(text).body);
+  rmSync(path);
+  appendAudit(dir, { action: "accepted", id, source_type: meta.source_type, source_ref: meta.source_ref });
+  return written;
+}
+
+// Moves a waiting write to rejected/. It never reaches the store, and the reason is logged.
+export function rejectPending(dir, id, reason = null) {
+  const from = pendingPath(dir, id);
+  const folder = join(dir, REJECTED);
+  mkdirSync(folder, { recursive: true });
+  const to = join(folder, `${id}.md`);
+  renameSync(from, to);
+  appendAudit(dir, { action: "rejected", id, reason });
+  return to;
 }
 
 // The full chain of memories a memory belongs to, oldest first.
@@ -163,7 +296,7 @@ export function readMemory(dir, id) {
   return { path, text: readFileSync(path, "utf8") };
 }
 
-// Reads every valid memory in the folder. Files that break the format go to skipped.
+// Reads every valid memory in the store folder. Files that break the format go to skipped.
 function readAll(dir) {
   const entries = [];
   const skipped = [];

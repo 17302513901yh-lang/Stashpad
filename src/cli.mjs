@@ -4,9 +4,13 @@ import { parseArgs } from "node:util";
 import { parseMemory } from "./memory-format.mjs";
 import {
   StoreError,
+  acceptPending,
   historyOf,
   listMemories,
+  listPending,
+  readAudit,
   readMemory,
+  rejectPending,
   saveMemory,
   searchMemories,
 } from "./store.mjs";
@@ -17,11 +21,20 @@ export const USAGE = `Usage:
   stashpad history <id> [--json]
   stashpad list [--all] [--json]
   stashpad search <words...> [--limit N] [--all] [--json]
+  stashpad review [--json]
+  stashpad accept <id>
+  stashpad reject <id> [--reason "<why>"]
+  stashpad audit [--json]
+
+Notes:
+  A save with --source-type user goes straight into the store.
+  A save with agent, tool or web waits in review until a person runs accept or reject.
 
 Options:
   --dir <folder>      where memories live (default: $STASHPAD_DIR, or ./.stashpad/memories)
   --text -            read the memory text from standard input
   --supersedes <id>   the memory this one replaces; that one gets an end date
+  --reason "<why>"    why a waiting memory was rejected (kept in the audit log)
   --limit N           most results to show for search (default 10)
   --all               include memories that have ended
   --json              print machine-readable output
@@ -37,6 +50,7 @@ const OPTIONS = {
   "valid-from": { type: "string" },
   limit: { type: "string" },
   supersedes: { type: "string" },
+  reason: { type: "string" },
   all: { type: "boolean" },
   json: { type: "boolean" },
   dir: { type: "string" },
@@ -74,7 +88,7 @@ async function cmdSave(io, dir, id, values) {
   }
 
   const content = values.text === "-" ? await io.readStdin() : values.text;
-  const path = saveMemory(dir, {
+  const result = saveMemory(dir, {
     id,
     kind: values.kind,
     text: content,
@@ -85,9 +99,58 @@ async function cmdSave(io, dir, id, values) {
   });
 
   if (values.json) {
-    io.stdout(JSON.stringify({ saved: id, path }));
+    io.stdout(JSON.stringify({ status: result.status, id, path: result.path }));
+  } else if (result.status === "queued") {
+    io.stdout(`Queued ${id} for review (not in the store yet). See it with "stashpad review".`);
   } else {
-    io.stdout(`Saved ${id} to ${path}`);
+    io.stdout(`Saved ${id} to ${result.path}`);
+  }
+  return 0;
+}
+
+function cmdReview(io, dir, values) {
+  const { rows, skipped } = listPending(dir);
+  for (const item of skipped) io.stderr(`skipped ${item.file}: ${item.reason}`);
+  if (values.json) {
+    io.stdout(JSON.stringify(rows));
+    return 0;
+  }
+  if (rows.length === 0) {
+    io.stdout("Nothing waiting for review.");
+    return 0;
+  }
+  for (const row of rows) {
+    const replaces = row.supersedes ? `  replaces ${row.supersedes}` : "";
+    io.stdout(`${row.id}  ${row.kind}  from ${row.source_type}: ${row.source_ref}${replaces}  ${row.summary}`);
+  }
+  return 0;
+}
+
+function cmdAccept(io, dir, id) {
+  const path = acceptPending(dir, id);
+  io.stdout(`Accepted ${id} into the store: ${path}`);
+  return 0;
+}
+
+function cmdReject(io, dir, id, values) {
+  const path = rejectPending(dir, id, values.reason ?? null);
+  io.stdout(`Rejected ${id}. Kept for the record in ${path}`);
+  return 0;
+}
+
+function cmdAudit(io, dir, values) {
+  const entries = readAudit(dir);
+  if (values.json) {
+    io.stdout(JSON.stringify(entries));
+    return 0;
+  }
+  if (entries.length === 0) {
+    io.stdout("No changes recorded yet.");
+    return 0;
+  }
+  for (const entry of entries) {
+    const detail = entry.source_ref ? `  from ${entry.source_type}: ${entry.source_ref}` : "";
+    io.stdout(`${entry.at}  ${entry.action}  ${entry.id}${detail}${entry.reason ? `  reason: ${entry.reason}` : ""}`);
   }
   return 0;
 }
@@ -206,6 +269,16 @@ export async function run(argv, io = defaultIo()) {
       case "get":
         if (!id) return usageError(io, "get needs an id, for example: stashpad get db-choice");
         return cmdGet(io, dir, id, values);
+      case "review":
+        return cmdReview(io, dir, values);
+      case "accept":
+        if (!id) return usageError(io, "accept needs an id, for example: stashpad accept agent-note");
+        return cmdAccept(io, dir, id);
+      case "reject":
+        if (!id) return usageError(io, "reject needs an id, for example: stashpad reject agent-note");
+        return cmdReject(io, dir, id, values);
+      case "audit":
+        return cmdAudit(io, dir, values);
       case "history":
         if (!id) return usageError(io, "history needs an id, for example: stashpad history db-choice-v2");
         return cmdHistory(io, dir, id, values);
