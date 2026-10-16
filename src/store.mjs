@@ -30,9 +30,42 @@ export class StoreError extends Error {}
 
 // Refuses to read or write through a symbolic link: a link could point outside the store.
 function assertSafeFile(path) {
-  if (existsSync(path) && lstatSync(path).isSymbolicLink()) {
+  if (isSymlink(path)) {
     throw new StoreError(`refusing to use a symbolic link in the store: ${path}`);
   }
+}
+
+function isSymlink(path) {
+  return existsSync(path) && lstatSync(path).isSymbolicLink();
+}
+
+// Replaces a file in one step, so the old content stays whole if the new one cannot be written.
+function writeAtomic(path, content) {
+  const temp = `${path}.${process.pid}.tmp`;
+  try {
+    writeFileSync(temp, content, { flag: "wx" });
+    renameSync(temp, path);
+  } catch (error) {
+    rmSync(temp, { force: true });
+    throw error;
+  }
+}
+
+// A rejected write keeps its file name. If that name is taken, a number is added, so no earlier rejection is overwritten.
+function uniquePath(folder, name) {
+  const dot = name.lastIndexOf(".");
+  const stem = name.slice(0, dot);
+  const ext = name.slice(dot);
+  let candidate = join(folder, name);
+  for (let n = 2; existsSync(candidate); n += 1) {
+    candidate = join(folder, `${stem}-${n}${ext}`);
+  }
+  return candidate;
+}
+
+// Current means in force on the given day: started on or before it, and not ended on or before it.
+export function isCurrent(meta, today = todayIso()) {
+  return meta.valid_from <= today && (meta.valid_to === null || meta.valid_to > today);
 }
 
 const PENDING = "pending";
@@ -79,6 +112,9 @@ function buildMemory(input, today) {
     throw new StoreError(
       `invalid id "${id}". Use lowercase letters, digits and hyphens, for example "db-choice".`,
     );
+  }
+  if (id.startsWith("forget-")) {
+    throw new StoreError(`invalid id "${id}". The prefix "forget-" is reserved for ending requests. Pick another id.`);
   }
   if (/[\r\n]/.test(sourceRef)) {
     throw new StoreError("source-ref must be one line of text");
@@ -150,7 +186,7 @@ function commitMemory(dir, meta, body) {
   if (old !== null) {
     try {
       const ended = { ...old.meta, valid_to: meta.valid_from, superseded_by: id };
-      writeFileSync(filePath(dir, supersedes), renderMemory(ended, old.body));
+      writeAtomic(filePath(dir, supersedes), renderMemory(ended, old.body));
     } catch (error) {
       rmSync(path, { force: true });
       throw error;
@@ -214,8 +250,18 @@ export function queueForget(dir, target, reason, sourceRef = "agent request", so
     throw new StoreError(`invalid id "${target}". Ids use lowercase letters, digits and hyphens.`);
   }
   const { text } = readMemory(dir, target);
-  if (parseMemory(text).meta.valid_to !== null) {
+  const { meta: targetMeta } = parseMemory(text);
+  if (targetMeta.valid_to !== null) {
     throw new StoreError(`"${target}" has already ended, so there is nothing to forget.`);
+  }
+  if (targetMeta.valid_from > todayIso()) {
+    throw new StoreError(`"${target}" has not started yet (it starts ${targetMeta.valid_from}), so there is nothing to end yet.`);
+  }
+  const secrets = findSecrets(`${reason}\n${sourceRef}`);
+  if (secrets.length > 0) {
+    throw new StoreError(
+      `not requested: the reason looks like a secret (${secrets.join(", ")}). Remove it. Reasons must not hold keys or passwords.`,
+    );
   }
   const folder = join(dir, PENDING);
   mkdirSync(folder, { recursive: true });
@@ -238,7 +284,7 @@ function applyForget(dir, id, path) {
   if (meta.valid_to !== null) {
     throw new StoreError(`"${request.target}" already ended on ${meta.valid_to}.`);
   }
-  writeFileSync(filePath(dir, request.target), renderMemory({ ...meta, valid_to: todayIso() }, body));
+  writeAtomic(filePath(dir, request.target), renderMemory({ ...meta, valid_to: todayIso() }, body));
   rmSync(path);
   appendAudit(dir, { action: "forgotten", id, target: request.target, reason: request.reason });
 }
@@ -252,6 +298,10 @@ export function listPending(dir) {
 
   for (const name of readdirSync(folder).filter((n) => n.endsWith(".md")).sort()) {
     const id = name.slice(0, -".md".length);
+    if (isSymlink(join(folder, name))) {
+      skipped.push({ file: name, reason: "symbolic link: not read" });
+      continue;
+    }
     const text = readFileSync(join(folder, name), "utf8");
     const { meta, errors } = validateMemory(text, id);
     if (errors.length > 0) {
@@ -295,12 +345,14 @@ export function acceptPending(dir, id) {
     applyForget(dir, id, path);
     return path;
   }
+  assertSafeFile(path);
   const text = readFileSync(path, "utf8");
   const { meta, errors } = validateMemory(text, id);
   if (errors.length > 0) {
     throw new StoreError(`"${id}" cannot be accepted, fix it first:\n- ${errors.join("\n- ")}`);
   }
-  const written = commitMemory(dir, meta, parseMemory(text).body);
+  // The date a person confirmed it is the day of acceptance, not the day the agent proposed it.
+  const written = commitMemory(dir, { ...meta, last_confirmed_at: todayIso() }, parseMemory(text).body);
   rmSync(path);
   appendAudit(dir, { action: "accepted", id, source_type: meta.source_type, source_ref: meta.source_ref });
   return written;
@@ -309,9 +361,12 @@ export function acceptPending(dir, id) {
 // Moves a waiting write to rejected/. It never reaches the store, and the reason is logged.
 export function rejectPending(dir, id, reason = null) {
   const from = pendingPath(dir, id);
+  if (reason !== null && findSecrets(reason).length > 0) {
+    throw new StoreError("not rejected: the reason looks like a secret. Remove it and try again.");
+  }
   const folder = join(dir, REJECTED);
   mkdirSync(folder, { recursive: true });
-  const to = join(folder, basename(from));
+  const to = uniquePath(folder, basename(from));
   renameSync(from, to);
   appendAudit(dir, { action: "rejected", id, reason });
   return to;
@@ -356,7 +411,7 @@ export function historyOf(dir, id) {
     valid_to: meta.valid_to,
     source_ref: meta.source_ref,
     trust: meta.trust,
-    current: meta.valid_to === null,
+    current: isCurrent(meta),
     requested: meta.id === id,
   }));
   return { chain, brokenLink };
@@ -383,6 +438,10 @@ function readAll(dir) {
   const names = readdirSync(dir).filter((name) => name.endsWith(".md")).sort();
   for (const name of names) {
     const id = name.slice(0, -".md".length);
+    if (isSymlink(join(dir, name))) {
+      skipped.push({ file: name, reason: "symbolic link: not read" });
+      continue;
+    }
     const text = readFileSync(join(dir, name), "utf8");
     const { errors } = validateMemory(text, id);
     if (errors.length > 0) {
@@ -399,6 +458,7 @@ function summarize(entry) {
   return {
     id: entry.id,
     kind: entry.meta.kind,
+    created_at: entry.meta.created_at,
     valid_from: entry.meta.valid_from,
     valid_to: entry.meta.valid_to,
     trust: entry.meta.trust,
@@ -407,18 +467,18 @@ function summarize(entry) {
 }
 
 // Current memories only, unless includeEnded is true.
-export function listMemories(dir, { includeEnded = false } = {}) {
+export function listMemories(dir, { includeEnded = false, today = todayIso() } = {}) {
   const { entries, skipped } = readAll(dir);
   const rows = entries
-    .filter((entry) => includeEnded || entry.meta.valid_to === null)
+    .filter((entry) => includeEnded || isCurrent(entry.meta, today))
     .map(summarize);
   return { rows, skipped };
 }
 
 // Ranks memories against the query. total is how many memories were searched.
-export function searchMemories(dir, query, { includeEnded = false, limit = 10 } = {}) {
+export function searchMemories(dir, query, { includeEnded = false, limit = 10, today = todayIso() } = {}) {
   const { entries, skipped } = readAll(dir);
-  const searched = entries.filter((entry) => includeEnded || entry.meta.valid_to === null);
+  const searched = entries.filter((entry) => includeEnded || isCurrent(entry.meta, today));
   const docs = searched.map((entry) => ({
     id: entry.id,
     text: `${entry.id.replace(/-/g, " ")} ${entry.body}`,

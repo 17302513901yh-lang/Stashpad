@@ -2,14 +2,19 @@
 
 // Patterns that look like real credentials. Kept deliberately narrow to limit false positives.
 const SECRET_PATTERNS = [
-  { name: "private key", pattern: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/ },
+  { name: "private key", pattern: /-----BEGIN (?:[A-Z]+ )*PRIVATE KEY(?: BLOCK)?-----/ },
   { name: "API key (sk- style)", pattern: /\bsk-[A-Za-z0-9_-]{20,}/ },
+  { name: "API key (sk_live or sk_test style)", pattern: /\bsk_(?:live|test)_[A-Za-z0-9]{16,}/ },
+  { name: "Google API key", pattern: /\bAIza[0-9A-Za-z_-]{30,}/ },
   { name: "GitHub token", pattern: /\bgh[pousr]_[A-Za-z0-9]{30,}/ },
+  { name: "GitHub fine-grained token", pattern: /\bgithub_pat_[A-Za-z0-9_]{20,}/ },
   { name: "AWS access key", pattern: /\bAKIA[0-9A-Z]{16}\b/ },
   { name: "Slack token", pattern: /\bxox[abprs]-[A-Za-z0-9-]{10,}/ },
   {
-    name: "password or secret assignment",
-    pattern: /\b(?:password|passwd|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*["']?[^\s"']{6,}/i,
+    // Names may have prefixes and suffixes joined by _ or -, such as DB_PASSWORD or aws_secret_access_key.
+    name: "password, secret, token or key assignment",
+    pattern:
+      /(?<![A-Za-z])(?:[A-Za-z0-9]+[_-])*(?:password|passwd|secret|api[_-]?key|apikey|access[_-]?key|access[_-]?token|token)[A-Za-z0-9_-]*\s*[:=]\s*["']?[^\s"']{6,}/i,
   },
 ];
 

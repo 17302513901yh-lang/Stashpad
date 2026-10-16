@@ -1,5 +1,5 @@
 // Evaluation harness: fixed cases, two baselines, and a raw report. Deterministic: no model is called.
-// Run it on your own store with: stashpad eval --dir <folder>, or on a temporary store by default.
+// Always runs on a temporary store, so the user's own memories are never read or changed.
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

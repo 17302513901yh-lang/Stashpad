@@ -41,7 +41,7 @@ test("an older fact that already ended before the newer one starts is left alone
   assert.equal(ended.valid_to, "2026-03-01");
 });
 
-test("a newer fact that already has an end date is historical and does not end the candidates", () => {
+test("a newer fact that already has an end date still ends an earlier fact that overlaps it", () => {
   const older = memory("old", "2026-01-01");
   const newer = memory("new", "2026-06-01", "2026-07-01");
   const invalidated = applyTemporalInvalidation(newer, [older]);

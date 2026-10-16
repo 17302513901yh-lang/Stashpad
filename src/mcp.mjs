@@ -77,6 +77,13 @@ export const TOOLS = [
   },
 ];
 
+// A limit from an agent: a whole number between min and max. Anything else gets the default.
+function clampLimit(value, fallback, max) {
+  const n = Number(value ?? fallback);
+  if (!Number.isInteger(n)) return fallback;
+  return Math.min(Math.max(n, 1), max);
+}
+
 function textResult(text, isError = false) {
   return { content: [{ type: "text", text }], ...(isError ? { isError: true } : {}) };
 }
@@ -97,7 +104,7 @@ function callTool(name, args, dir) {
     switch (name) {
       case "stashpad_search": {
         requireArgs(name, args, ["query"]);
-        const limit = Math.min(Math.max(Number(args.limit ?? 10), 1), 20);
+        const limit = clampLimit(args.limit, 10, 20);
         const { total, results } = searchMemories(dir, String(args.query), { limit });
         return jsonResult({ label: DATA_LABEL, searched: total, results });
       }
@@ -113,9 +120,12 @@ function callTool(name, args, dir) {
         });
       }
       case "stashpad_recent": {
-        const limit = Math.min(Math.max(Number(args.limit ?? 10), 1), 50);
+        const limit = clampLimit(args.limit, 10, 50);
         const { rows } = listMemories(dir);
-        const newest = [...rows].sort((a, b) => (a.valid_from < b.valid_from ? 1 : -1)).slice(0, limit);
+        // Newest by when it was written; ties by id so the order is stable.
+        const newest = [...rows]
+          .sort((a, b) => (a.created_at === b.created_at ? a.id.localeCompare(b.id) : a.created_at < b.created_at ? 1 : -1))
+          .slice(0, limit);
         return jsonResult({ label: DATA_LABEL, memories: newest });
       }
       case "stashpad_save": {
@@ -152,6 +162,9 @@ function callTool(name, args, dir) {
 
 // Handles one JSON-RPC message. Returns the reply, or null for notifications.
 export function handleMessage(message, { dir }) {
+  if (typeof message !== "object" || message === null || Array.isArray(message)) {
+    return { jsonrpc: "2.0", id: null, error: { code: -32600, message: "invalid request: expected a JSON object" } };
+  }
   const { id, method, params } = message;
   const isRequest = id !== undefined;
   const reply = (result) => ({ jsonrpc: "2.0", id, result });
