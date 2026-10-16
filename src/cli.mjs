@@ -2,21 +2,30 @@
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { parseMemory } from "./memory-format.mjs";
-import { StoreError, listMemories, readMemory, saveMemory, searchMemories } from "./store.mjs";
+import {
+  StoreError,
+  historyOf,
+  listMemories,
+  readMemory,
+  saveMemory,
+  searchMemories,
+} from "./store.mjs";
 
 export const USAGE = `Usage:
-  stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD]
+  stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD] [--supersedes <old-id>]
   stashpad get <id> [--json]
+  stashpad history <id> [--json]
   stashpad list [--all] [--json]
   stashpad search <words...> [--limit N] [--all] [--json]
 
 Options:
-  --dir <folder>   where memories live (default: $STASHPAD_DIR, or ./.stashpad/memories)
-  --text -         read the memory text from standard input
-  --limit N        most results to show for search (default 10)
-  --all            include memories that have ended
-  --json           print machine-readable output
-  --help           show this help
+  --dir <folder>      where memories live (default: $STASHPAD_DIR, or ./.stashpad/memories)
+  --text -            read the memory text from standard input
+  --supersedes <id>   the memory this one replaces; that one gets an end date
+  --limit N           most results to show for search (default 10)
+  --all               include memories that have ended
+  --json              print machine-readable output
+  --help              show this help
 
 Exit codes: 0 ok, 1 the memory or store has a problem, 2 wrong command or options.`;
 
@@ -27,6 +36,7 @@ const OPTIONS = {
   text: { type: "string" },
   "valid-from": { type: "string" },
   limit: { type: "string" },
+  supersedes: { type: "string" },
   all: { type: "boolean" },
   json: { type: "boolean" },
   dir: { type: "string" },
@@ -71,6 +81,7 @@ async function cmdSave(io, dir, id, values) {
     sourceType: values["source-type"],
     sourceRef: values["source-ref"],
     validFrom: values["valid-from"],
+    supersedes: values.supersedes ?? null,
   });
 
   if (values.json) {
@@ -88,6 +99,25 @@ function cmdGet(io, dir, id, values) {
     io.stdout(JSON.stringify({ ...meta, body }));
   } else {
     io.stdout(text.replace(/\n$/, ""));
+  }
+  return 0;
+}
+
+function cmdHistory(io, dir, id, values) {
+  const { chain, brokenLink } = historyOf(dir, id);
+  if (values.json) {
+    io.stdout(JSON.stringify({ chain, broken_link: brokenLink }));
+    return 0;
+  }
+  for (const item of chain) {
+    const marker = item.requested ? "->" : "  ";
+    const status = item.current ? "current" : `ended ${item.valid_to}`;
+    io.stdout(
+      `${marker} ${item.id}  valid since ${item.valid_from}  ${status}  ${item.trust}  source: ${item.source_ref}`,
+    );
+  }
+  if (brokenLink !== null) {
+    io.stderr(`warning: the chain points to "${brokenLink}", which is missing from ${dir}`);
   }
   return 0;
 }
@@ -176,6 +206,9 @@ export async function run(argv, io = defaultIo()) {
       case "get":
         if (!id) return usageError(io, "get needs an id, for example: stashpad get db-choice");
         return cmdGet(io, dir, id, values);
+      case "history":
+        if (!id) return usageError(io, "history needs an id, for example: stashpad history db-choice-v2");
+        return cmdHistory(io, dir, id, values);
       case "list":
         return cmdList(io, dir, values);
       default:

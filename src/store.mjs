@@ -1,5 +1,5 @@
 // File-based store for Stashpad memories. No index: every read goes to the files.
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   REQUIRED_KEYS,
@@ -31,9 +31,10 @@ function renderMemory(meta, body) {
   return lines.join("\n");
 }
 
-// Writes a new memory file. Never overwrites: a changed fact needs a new id.
+// Writes a new memory file. Never overwrites a memory. A changed fact is a new memory
+// that supersedes the old one: the old one gets valid_to and superseded_by.
 export function saveMemory(dir, input, today = todayIso()) {
-  const { id, kind, text, sourceType, sourceRef, validFrom } = input;
+  const { id, kind, text, sourceType, sourceRef, validFrom, supersedes = null } = input;
 
   if (!isValidId(id)) {
     throw new StoreError(
@@ -50,7 +51,7 @@ export function saveMemory(dir, input, today = todayIso()) {
     created_at: today,
     valid_from: validFrom ?? today,
     valid_to: null,
-    supersedes: null,
+    supersedes,
     superseded_by: null,
     source_type: sourceType,
     source_ref: sourceRef.trim(),
@@ -64,6 +65,27 @@ export function saveMemory(dir, input, today = todayIso()) {
     throw new StoreError(`not saved, fix these first:\n- ${errors.join("\n- ")}`);
   }
 
+  // Check everything before writing anything.
+  let old = null;
+  if (supersedes !== null) {
+    const { text: oldText } = readMemory(dir, supersedes);
+    const oldCheck = validateMemory(oldText, supersedes);
+    if (oldCheck.errors.length > 0) {
+      throw new StoreError(`"${supersedes}" has a problem, fix it first:\n- ${oldCheck.errors.join("\n- ")}`);
+    }
+    if (oldCheck.meta.valid_to !== null) {
+      throw new StoreError(
+        `"${supersedes}" already ended on ${oldCheck.meta.valid_to}. Supersede the memory that replaced it instead.`,
+      );
+    }
+    if (meta.valid_from < oldCheck.meta.valid_from) {
+      throw new StoreError(
+        `valid_from ${meta.valid_from} is before "${supersedes}" started (${oldCheck.meta.valid_from}).`,
+      );
+    }
+    old = { meta: oldCheck.meta, body: parseMemory(oldText).body };
+  }
+
   mkdirSync(dir, { recursive: true });
   const path = filePath(dir, id);
   if (existsSync(path)) {
@@ -72,7 +94,62 @@ export function saveMemory(dir, input, today = todayIso()) {
     );
   }
   writeFileSync(path, content, { flag: "wx" });
+
+  if (old !== null) {
+    try {
+      const ended = { ...old.meta, valid_to: meta.valid_from, superseded_by: id };
+      writeFileSync(filePath(dir, supersedes), renderMemory(ended, old.body));
+    } catch (error) {
+      rmSync(path, { force: true });
+      throw error;
+    }
+  }
   return path;
+}
+
+// The full chain of memories a memory belongs to, oldest first.
+export function historyOf(dir, id) {
+  const load = (memId) => parseMemory(readMemory(dir, memId).text).meta;
+  const start = load(id);
+
+  const before = [];
+  const seen = new Set([id]);
+  let cursor = start;
+  let brokenLink = null;
+  while (cursor.supersedes !== null && !seen.has(cursor.supersedes)) {
+    seen.add(cursor.supersedes);
+    try {
+      cursor = load(cursor.supersedes);
+    } catch {
+      brokenLink = cursor.supersedes;
+      break;
+    }
+    before.unshift(cursor);
+  }
+
+  const after = [];
+  cursor = start;
+  while (cursor.superseded_by !== null && !seen.has(cursor.superseded_by)) {
+    seen.add(cursor.superseded_by);
+    try {
+      cursor = load(cursor.superseded_by);
+    } catch {
+      brokenLink = cursor.superseded_by;
+      break;
+    }
+    after.push(cursor);
+  }
+
+  const chain = [...before, start, ...after].map((meta) => ({
+    id: meta.id,
+    valid_from: meta.valid_from,
+    valid_to: meta.valid_to,
+    source_ref: meta.source_ref,
+    trust: meta.trust,
+    current: meta.valid_to === null,
+    requested: meta.id === id,
+  }));
+  return { chain, brokenLink };
 }
 
 export function readMemory(dir, id) {
