@@ -1,6 +1,6 @@
 {
   "name": "stashpad",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Local-first memory and context holder for AI agents. Readable, editable, source-tracked.",
   "license": "MIT",
   "type": "module",
@@ -21,9 +21,30 @@
   "files": [
     "bin",
     "src",
-    "dist",
+    "skills",
+    "docs",
+    "AGENTS.md",
+    "AGENT-GUIDE.md",
     "LICENSE",
+    "README.md",
     "THIRD_PARTY_NOTICES.md",
     "third_party"
-  ]
+  ],
+  "keywords": [
+    "ai-agents",
+    "agent-memory",
+    "mcp",
+    "model-context-protocol",
+    "local-first",
+    "markdown",
+    "memory"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/laaielichter/stashpad.git"
+  },
+  "homepage": "https://github.com/laaielichter/stashpad#readme",
+  "bugs": {
+    "url": "https://github.com/laaielichter/stashpad/issues"
+  }
 }
