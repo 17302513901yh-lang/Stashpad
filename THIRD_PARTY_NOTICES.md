@@ -5,7 +5,7 @@ Stashpad itself is released under the MIT License (see `LICENSE`).
 This file lists every piece of third-party code that is copied, ported or
 adapted into Stashpad. Full license texts are kept in `third_party/licenses/`.
 
-**Status: no third-party code has been included yet.**
+**Status: third-party code is included. Each file is listed in the table below.**
 
 ## How to add an entry
 
@@ -13,7 +13,7 @@ Add one row per upstream project, before the code is merged:
 
 | Project | Source URL | Commit | License | Copyright holder | Stashpad files derived from it |
 |---|---|---|---|---|---|
-| _(none yet)_ | | | | | |
+| graphiti | https://github.com/getzep/graphiti | d50741d1bf463cbe3859eb73914cbff1b66839e6 | Apache-2.0 | Copyright 2024, Zep Software, Inc. | `graphiti/temporal.mjs` |
 
 Rules:
 

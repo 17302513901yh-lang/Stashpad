@@ -1,6 +1,7 @@
 // Dev tool: copies one file from a permissively licensed upstream project into third_party/,
 // with a provenance header, the license text, a provenance log line and a THIRD_PARTY_NOTICES.md row.
 // Refuses any license that is not on the allow list, before it reads anything.
+import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 
@@ -61,7 +62,8 @@ export function updateNotices(noticesText, entry) {
 }
 
 export function portFile(opts) {
-  const { root, project, sourceUrl, commit, license, copyright, upstreamPath, sourceFile, dest, licenseFile, modifiedNote, today } = opts;
+  // bodyFile is an optional translation of sourceFile. Without it the original is copied as is.
+  const { root, project, sourceUrl, commit, license, copyright, upstreamPath, sourceFile, dest, licenseFile, modifiedNote, today, bodyFile } = opts;
 
   // The license gate runs first, so a refused license never reads or writes a file.
   const spdx = checkLicense(license);
@@ -84,21 +86,28 @@ export function portFile(opts) {
   if (!existsSync(licenseFile)) {
     throw new PortError("refused: license text not found. Pass the upstream LICENSE file with --license-file.");
   }
+  if (bodyFile !== undefined && !existsSync(bodyFile)) throw new PortError(`refused: body file not found: ${bodyFile}`);
 
   const notices = join(root, "THIRD_PARTY_NOTICES.md");
   const noticesText = readFileSync(notices, "utf8");
   const newNotices = updateNotices(noticesText, { project, sourceUrl, commit, license: spdx, copyright, dest });
 
+  const original = readFileSync(sourceFile);
+  const sha256 = createHash("sha256").update(original).digest("hex");
+  const translated = bodyFile !== undefined;
+  const body = translated ? readFileSync(bodyFile, "utf8") : original.toString("utf8");
+
   const header = [
     `// Ported from ${project} (${sourceUrl}) at commit ${commit}.`,
-    `// Original file: ${upstreamPath}. License: ${spdx}. Copyright: ${copyright}.`,
+    `// Original file: ${upstreamPath}. License: ${spdx}. Copyright: ${copyright.replace(/\.$/, "")}.`,
+    `// Original file sha256: ${sha256}.`,
+    translated ? "// This file is a translation of the original, not a copy." : "// This file is the original, copied as is.",
     `// Modified for Stashpad: ${modifiedNote}`,
-    "// The original copyright header follows unchanged.",
     "",
   ].join("\n");
 
   mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, header + readFileSync(sourceFile, "utf8"), { flag: "wx" });
+  writeFileSync(target, header + body, { flag: "wx" });
 
   const licenseName = `${project}-${spdx}.txt`;
   const licenseTarget = join(root, "third_party", "licenses", licenseName);
@@ -107,7 +116,10 @@ export function portFile(opts) {
   writeFileSync(notices, newNotices);
   appendFileSync(
     join(root, "third_party", "provenance.jsonl"),
-    JSON.stringify({ project, source_url: sourceUrl, commit, license: spdx, upstream_path: upstreamPath, dest, date: today }) + "\n",
+    JSON.stringify({
+      project, source_url: sourceUrl, commit, license: spdx, upstream_path: upstreamPath,
+      upstream_sha256: sha256, translated, dest, date: today,
+    }) + "\n",
   );
 
   return { dest: `third_party/${dest}`, license: spdx, licenseText: `third_party/licenses/${licenseName}` };

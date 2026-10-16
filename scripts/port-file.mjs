@@ -23,6 +23,7 @@ const { values } = parseArgs({
     dest: { type: "string" },
     "license-file": { type: "string" },
     "modified-note": { type: "string" },
+    "body-file": { type: "string" },
   },
   strict: true,
 });
@@ -40,6 +41,7 @@ try {
     dest: values.dest,
     licenseFile: values["license-file"],
     modifiedNote: values["modified-note"],
+    bodyFile: values["body-file"],
     today,
   });
   console.log(`Ported ${result.dest} under ${result.license}. License text: ${result.licenseText}. Notices and provenance log updated.`);

@@ -78,15 +78,26 @@ test("an allowed file gets a provenance header, its license text, a notice row a
   assert.match(notices, /\| example \| https:\/\/github.com\/example\/example \| 1a2b3c4d \| Apache-2.0 \| Copyright 2025 Example \| `example\/validity.mjs` \|/);
 
   const log = readFileSync(join(f.root, "third_party", "provenance.jsonl"), "utf8").trim();
-  assert.deepEqual(JSON.parse(log), {
-    project: "example",
-    source_url: "https://github.com/example/example",
-    commit: "1a2b3c4d",
-    license: "Apache-2.0",
-    upstream_path: "src/validity.py",
-    dest: "example/validity.mjs",
-    date: "2026-10-16",
-  });
+  const entry = JSON.parse(log);
+  assert.equal(entry.project, "example");
+  assert.equal(entry.commit, "1a2b3c4d");
+  assert.equal(entry.translated, false);
+  assert.match(entry.upstream_sha256, /^[0-9a-f]{64}$/);
+  assert.equal(entry.dest, "example/validity.mjs");
+  assert.equal(entry.date, "2026-10-16");
+});
+
+test("a translation uses the body file and records the hash of the original", () => {
+  const f = fixture();
+  const body = join(f.root, "translated-body.mjs");
+  writeFileSync(body, "export const translated = true;\n");
+  portFile(base(f, { dest: "example/translated.mjs", bodyFile: body }));
+  const ported = readFileSync(join(f.root, "third_party", "example", "translated.mjs"), "utf8");
+  assert.match(ported, /This file is a translation of the original/);
+  assert.match(ported, /export const translated = true;/);
+  assert.doesNotMatch(ported, /def valid/);
+  const log = readFileSync(join(f.root, "third_party", "provenance.jsonl"), "utf8").trim().split("\n").pop();
+  assert.equal(JSON.parse(log).translated, true);
 });
 
 test("a second file from the same project is added to the same notice row", () => {

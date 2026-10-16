@@ -1,0 +1,1 @@
+{"project":"graphiti","source_url":"https://github.com/getzep/graphiti","commit":"d50741d1bf463cbe3859eb73914cbff1b66839e6","license":"Apache-2.0","upstream_path":"graphiti_core/utils/maintenance/edge_operations.py","upstream_sha256":"c98b606007d6490412c0fb3ec20482965a123a08987a7c1f48ae78ddeb718b75","translated":true,"dest":"graphiti/temporal.mjs","date":"2026-10-16"}
