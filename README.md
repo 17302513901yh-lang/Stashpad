@@ -1,7 +1,18 @@
 # Stashpad
 
-Local memory for AI agents. Memories are plain Markdown files you can read, edit in review and diff.
-Every memory has a source, dates and a trust level. Old facts are ended, not overwritten.
+**Memory for AI agents that you can read, edit and trust.**
+
+Stashpad keeps what an agent learns as plain Markdown files. Every memory has a source, dates and a trust level. Agents propose, a person accepts. Old facts are ended, never overwritten.
+
+- **Plain files.** Open them in any editor, diff them, keep them in git.
+- **Safe by default.** Agent and web writes wait in a review queue. Secrets are refused.
+- **Nothing to install.** Node 20 or newer, no dependencies.
+
+```bash
+git clone https://github.com/laaielichter/stashpad && cd stashpad
+node bin/stashpad.mjs save db-choice --kind decision --source-type user --source-ref "chat" --text "We keep data in SQLite."
+node bin/stashpad.mjs search sqlite
+```
 
 Agents: read [AGENT-GUIDE.md](AGENT-GUIDE.md).
 
