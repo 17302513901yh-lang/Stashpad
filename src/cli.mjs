@@ -2,6 +2,7 @@
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { parseMemory } from "./memory-format.mjs";
+import { DATA_LABEL } from "./security.mjs";
 import {
   StoreError,
   acceptPending,
@@ -121,7 +122,8 @@ function cmdReview(io, dir, values) {
   }
   for (const row of rows) {
     const replaces = row.supersedes ? `  replaces ${row.supersedes}` : "";
-    io.stdout(`${row.id}  ${row.kind}  from ${row.source_type}: ${row.source_ref}${replaces}  ${row.summary}`);
+    const flag = row.flagged ? "  [check: reads like an instruction]" : "";
+    io.stdout(`${row.id}  ${row.kind}  from ${row.source_type}: ${row.source_ref}${replaces}  ${row.summary}${flag}`);
   }
   return 0;
 }
@@ -159,8 +161,9 @@ function cmdGet(io, dir, id, values) {
   const { text } = readMemory(dir, id);
   if (values.json) {
     const { meta, body } = parseMemory(text);
-    io.stdout(JSON.stringify({ ...meta, body }));
+    io.stdout(JSON.stringify({ label: DATA_LABEL, ...meta, body }));
   } else {
+    io.stdout(`# ${DATA_LABEL}`);
     io.stdout(text.replace(/\n$/, ""));
   }
   return 0;

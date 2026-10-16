@@ -23,8 +23,17 @@ import {
   validateMemory,
 } from "./memory-format.mjs";
 import { bm25Rank } from "./search.mjs";
+import { findInstructionLikeText, findSecrets } from "./security.mjs";
+import { lstatSync } from "node:fs";
 
 export class StoreError extends Error {}
+
+// Refuses to read or write through a symbolic link: a link could point outside the store.
+function assertSafeFile(path) {
+  if (existsSync(path) && lstatSync(path).isSymbolicLink()) {
+    throw new StoreError(`refusing to use a symbolic link in the store: ${path}`);
+  }
+}
 
 const PENDING = "pending";
 const REJECTED = "rejected";
@@ -73,6 +82,12 @@ function buildMemory(input, today) {
   }
   if (/[\r\n]/.test(sourceRef)) {
     throw new StoreError("source-ref must be one line of text");
+  }
+  const secrets = findSecrets(`${text}\n${sourceRef}`);
+  if (secrets.length > 0) {
+    throw new StoreError(
+      `not saved: this looks like a secret (${secrets.join(", ")}). Remove it. Memories must not hold keys or passwords.`,
+    );
   }
 
   const meta = {
@@ -124,6 +139,7 @@ function commitMemory(dir, meta, body) {
 
   mkdirSync(dir, { recursive: true });
   const path = filePath(dir, id);
+  assertSafeFile(path);
   if (existsSync(path)) {
     throw new StoreError(
       `memory "${id}" already exists. Pick a new id. A changed fact gets a new memory, not an edit.`,
@@ -160,6 +176,7 @@ function queueForReview(dir, meta, body) {
   const folder = join(dir, PENDING);
   mkdirSync(folder, { recursive: true });
   const path = join(folder, `${id}.md`);
+  assertSafeFile(path);
   if (existsSync(path)) {
     throw new StoreError(`"${id}" is already waiting for review. Accept or reject it first with "stashpad review".`);
   }
@@ -203,13 +220,15 @@ export function listPending(dir) {
       skipped.push({ file: name, reason: errors[0] });
       continue;
     }
+    const body = parseMemory(text).body;
     rows.push({
       id,
       kind: meta.kind,
       source_type: meta.source_type,
       source_ref: meta.source_ref,
       supersedes: meta.supersedes,
-      summary: parseMemory(text).body.split("\n")[0],
+      summary: body.split("\n")[0],
+      flagged: findInstructionLikeText(body),
     });
   }
   return { rows, skipped };
@@ -293,6 +312,7 @@ export function readMemory(dir, id) {
   if (!existsSync(path)) {
     throw new StoreError(`no memory named "${id}" in ${dir}. Run "stashpad list --all" to see what exists.`);
   }
+  assertSafeFile(path);
   return { path, text: readFileSync(path, "utf8") };
 }
 

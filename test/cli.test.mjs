@@ -44,7 +44,7 @@ test("save then get returns the memory with derived trust and today's date", asy
 
   const get = harness();
   assert.equal(await run(["get", "node-version", "--dir", dir], get.io), 0);
-  const text = get.out[0];
+  const text = get.out.join("\n");
   assert.match(text, /^id: node-version$/m);
   assert.match(text, /^trust: user-stated$/m);
   assert.match(text, new RegExp(`^created_at: ${todayIso()}$`, "m"));
