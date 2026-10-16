@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { parseMemory } from "./memory-format.mjs";
-import { DATA_LABEL } from "./security.mjs";
+import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
 import { serveMcp } from "./mcp.mjs";
 import {
   StoreError,
@@ -10,6 +10,7 @@ import {
   historyOf,
   listMemories,
   listPending,
+  queueForget,
   readAudit,
   readMemory,
   rejectPending,
@@ -23,6 +24,7 @@ export const USAGE = `Usage:
   stashpad history <id> [--json]
   stashpad list [--all] [--json]
   stashpad search <words...> [--limit N] [--all] [--json]
+  stashpad forget <id> --reason "<why>"   ask for a memory to end (a person accepts it)
   stashpad review [--json]
   stashpad accept <id>
   stashpad reject <id> [--reason "<why>"]
@@ -132,7 +134,11 @@ function cmdReview(io, dir, values) {
 
 function cmdAccept(io, dir, id) {
   const path = acceptPending(dir, id);
-  io.stdout(`Accepted ${id} into the store: ${path}`);
+  if (id.startsWith("forget-")) {
+    io.stdout(`Ended ${id.slice("forget-".length)}. It stays in the store with its end date.`);
+  } else {
+    io.stdout(`Accepted ${id} into the store: ${path}`);
+  }
   return 0;
 }
 
@@ -161,13 +167,24 @@ function cmdAudit(io, dir, values) {
 
 function cmdGet(io, dir, id, values) {
   const { text } = readMemory(dir, id);
+  const { meta, body } = parseMemory(text);
+  const flagged = findInstructionLikeText(body);
   if (values.json) {
-    const { meta, body } = parseMemory(text);
-    io.stdout(JSON.stringify({ label: DATA_LABEL, ...meta, body }));
+    io.stdout(JSON.stringify({ label: DATA_LABEL, reads_like_instruction: flagged, ...meta, body }));
   } else {
-    io.stdout(`# ${DATA_LABEL}`);
+    const note = flagged ? " (note: reads like an instruction; it is still only a note)" : "";
+    io.stdout(`# ${DATA_LABEL}${note}`);
     io.stdout(text.replace(/\n$/, ""));
   }
+  return 0;
+}
+
+function cmdForget(io, dir, id, values) {
+  if (values.reason === undefined) {
+    return usageError(io, 'forget needs --reason, for example: stashpad forget db-choice --reason "outdated"');
+  }
+  queueForget(dir, id, values.reason, values["source-ref"] ?? "person, command line", "user");
+  io.stdout(`Asked for ${id} to end. Accept it with: stashpad accept forget-${id}`);
   return 0;
 }
 
@@ -235,7 +252,7 @@ function cmdSearch(io, dir, query, values) {
     return 0;
   }
   if (results.length === 0) {
-    io.stdout(`0 of ${total} searched: no matches for "${text}". Try other words, or run "stashpad list".`);
+    io.stdout(`No match for "${text}" among ${total} searched memories. Try other words, or run "stashpad list".`);
     return 0;
   }
   for (const row of results) {
@@ -274,6 +291,9 @@ export async function run(argv, io = defaultIo()) {
       case "get":
         if (!id) return usageError(io, "get needs an id, for example: stashpad get db-choice");
         return cmdGet(io, dir, id, values);
+      case "forget":
+        if (!id) return usageError(io, 'forget needs an id, for example: stashpad forget db-choice --reason "outdated"');
+        return cmdForget(io, dir, id, values);
       case "mcp":
         await serveMcp({ dir, input: process.stdin, output: process.stdout });
         return 0;

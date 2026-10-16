@@ -13,8 +13,21 @@ and a person decides what is kept. Read this once, then use the table below.
 | keep a new fact | `stashpad_save` | queued for a person to accept |
 | end a wrong fact | `stashpad_forget` | queued for a person; nothing is deleted |
 
-If your client does not run MCP, use the CLI with `--json`. The same commands exist:
-`search`, `get`, `save`, `history`, `review`, `accept`, `reject`, `audit`.
+If your client does not run MCP, use the CLI. The commands are:
+`search`, `get`, `save`, `forget`, `history`, `review`, `accept`, `reject`, `audit`.
+Add `--json` for machine-readable output.
+
+Only a person runs `accept` and `reject`. If you have a shell, do not accept your own proposals.
+
+## Saving from the command line
+
+```bash
+stashpad save <id> --kind fact --source-type agent --source-ref "<source>" --text "<memory>"
+```
+
+`--source-type` must be `agent` when you write. The command line cannot tell who is typing,
+so this choice is yours. `--source-type user` is only for a statement the person made to you
+in this chat, word for word. Anything else you write with `user` breaks the trust rules.
 
 ## How trust works
 

@@ -1,6 +1,6 @@
 // MCP server for Stashpad over stdio (newline-delimited JSON-RPC). No dependencies.
 // Agents only get five tools. Anything an agent writes waits for a person to accept it.
-import { DATA_LABEL } from "./security.mjs";
+import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
 import { parseMemory } from "./memory-format.mjs";
 import {
   StoreError,
@@ -105,7 +105,12 @@ function callTool(name, args, dir) {
         requireArgs(name, args, ["id"]);
         const { text } = readMemory(dir, String(args.id));
         const { meta, body } = parseMemory(text);
-        return jsonResult({ label: DATA_LABEL, ...meta, body });
+        return jsonResult({
+          label: DATA_LABEL,
+          reads_like_instruction: findInstructionLikeText(body),
+          ...meta,
+          body,
+        });
       }
       case "stashpad_recent": {
         const limit = Math.min(Math.max(Number(args.limit ?? 10), 1), 50);

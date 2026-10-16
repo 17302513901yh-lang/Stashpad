@@ -209,8 +209,14 @@ function pendingPath(dir, id) {
 }
 
 // A request from an agent to end a memory. Nothing is deleted. The memory stays, with an end date.
-export function queueForget(dir, target, reason, sourceRef = "agent request") {
-  readMemory(dir, target);
+export function queueForget(dir, target, reason, sourceRef = "agent request", sourceType = "agent") {
+  if (!isValidId(target)) {
+    throw new StoreError(`invalid id "${target}". Ids use lowercase letters, digits and hyphens.`);
+  }
+  const { text } = readMemory(dir, target);
+  if (parseMemory(text).meta.valid_to !== null) {
+    throw new StoreError(`"${target}" has already ended, so there is nothing to forget.`);
+  }
   const folder = join(dir, PENDING);
   mkdirSync(folder, { recursive: true });
   const id = `forget-${target}`;
@@ -219,9 +225,9 @@ export function queueForget(dir, target, reason, sourceRef = "agent request") {
   if (existsSync(path)) {
     throw new StoreError(`an ending request for "${target}" is already waiting for review.`);
   }
-  const request = { action: "forget", target, reason, source_type: "agent", source_ref: sourceRef };
+  const request = { action: "forget", target, reason, source_type: sourceType, source_ref: sourceRef };
   writeFileSync(path, `${JSON.stringify(request, null, 2)}\n`, { flag: "wx" });
-  appendAudit(dir, { action: "queued", id, source_type: "agent", source_ref: sourceRef, reason });
+  appendAudit(dir, { action: "queued", id, source_type: sourceType, source_ref: sourceRef, reason });
   return path;
 }
 

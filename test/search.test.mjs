@@ -97,7 +97,7 @@ test("a word that matches nothing reports 0 of N searched", async () => {
   const dir = freshDirWithNotes();
   const { io, out } = harness();
   assert.equal(await run(["search", "zebra", "--dir", dir], io), 0);
-  assert.match(out[0], /^0 of 20 searched: no matches for "zebra"/);
+  assert.match(out[0], /^No match for "zebra" among 20 searched memories/);
 });
 
 test("an empty query is a usage error", async () => {
