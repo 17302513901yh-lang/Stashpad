@@ -14,7 +14,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
   REQUIRED_KEYS,
   TRUST_BY_SOURCE,
@@ -194,15 +194,47 @@ export function saveMemory(dir, input, today = todayIso()) {
   return { status: "saved", path: commitMemory(dir, meta, body) };
 }
 
+// Path of a waiting write. A memory is <id>.md, an ending request is forget-<id>.json.
 function pendingPath(dir, id) {
-  if (!isValidId(id)) {
+  const isForget = id.startsWith("forget-");
+  const target = isForget ? id.slice("forget-".length) : id;
+  if (!isValidId(target)) {
     throw new StoreError(`invalid id "${id}". Ids use lowercase letters, digits and hyphens.`);
   }
-  const path = join(dir, PENDING, `${id}.md`);
+  const path = join(dir, PENDING, isForget ? `${id}.json` : `${id}.md`);
   if (!existsSync(path)) {
     throw new StoreError(`nothing waiting for review under "${id}". Run "stashpad review" to see what is queued.`);
   }
   return path;
+}
+
+// A request from an agent to end a memory. Nothing is deleted. The memory stays, with an end date.
+export function queueForget(dir, target, reason, sourceRef = "agent request") {
+  readMemory(dir, target);
+  const folder = join(dir, PENDING);
+  mkdirSync(folder, { recursive: true });
+  const id = `forget-${target}`;
+  const path = join(folder, `${id}.json`);
+  assertSafeFile(path);
+  if (existsSync(path)) {
+    throw new StoreError(`an ending request for "${target}" is already waiting for review.`);
+  }
+  const request = { action: "forget", target, reason, source_type: "agent", source_ref: sourceRef };
+  writeFileSync(path, `${JSON.stringify(request, null, 2)}\n`, { flag: "wx" });
+  appendAudit(dir, { action: "queued", id, source_type: "agent", source_ref: sourceRef, reason });
+  return path;
+}
+
+function applyForget(dir, id, path) {
+  const request = JSON.parse(readFileSync(path, "utf8"));
+  const { text } = readMemory(dir, request.target);
+  const { meta, body } = parseMemory(text);
+  if (meta.valid_to !== null) {
+    throw new StoreError(`"${request.target}" already ended on ${meta.valid_to}.`);
+  }
+  writeFileSync(filePath(dir, request.target), renderMemory({ ...meta, valid_to: todayIso() }, body));
+  rmSync(path);
+  appendAudit(dir, { action: "forgotten", id, target: request.target, reason: request.reason });
 }
 
 // Waiting writes, newest name order. Files that break the format go to skipped.
@@ -231,12 +263,32 @@ export function listPending(dir) {
       flagged: findInstructionLikeText(body),
     });
   }
+  for (const name of readdirSync(folder).filter((n) => n.startsWith("forget-") && n.endsWith(".json")).sort()) {
+    try {
+      const request = JSON.parse(readFileSync(join(folder, name), "utf8"));
+      rows.push({
+        id: name.slice(0, -".json".length),
+        kind: "forget",
+        source_type: request.source_type,
+        source_ref: request.source_ref,
+        supersedes: null,
+        summary: `end "${request.target}": ${request.reason}`,
+        flagged: findInstructionLikeText(request.reason),
+      });
+    } catch {
+      skipped.push({ file: name, reason: "cannot read this ending request" });
+    }
+  }
   return { rows, skipped };
 }
 
-// Moves a waiting write into the store. If the store check fails, it stays in pending/.
+// Accepts a waiting write (or ending request). If the store check fails, it stays in pending/.
 export function acceptPending(dir, id) {
   const path = pendingPath(dir, id);
+  if (path.endsWith(".json")) {
+    applyForget(dir, id, path);
+    return path;
+  }
   const text = readFileSync(path, "utf8");
   const { meta, errors } = validateMemory(text, id);
   if (errors.length > 0) {
@@ -253,7 +305,7 @@ export function rejectPending(dir, id, reason = null) {
   const from = pendingPath(dir, id);
   const folder = join(dir, REJECTED);
   mkdirSync(folder, { recursive: true });
-  const to = join(folder, `${id}.md`);
+  const to = join(folder, basename(from));
   renameSync(from, to);
   appendAudit(dir, { action: "rejected", id, reason });
   return to;

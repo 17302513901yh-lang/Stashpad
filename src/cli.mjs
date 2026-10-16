@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { parseMemory } from "./memory-format.mjs";
 import { DATA_LABEL } from "./security.mjs";
+import { serveMcp } from "./mcp.mjs";
 import {
   StoreError,
   acceptPending,
@@ -26,6 +27,7 @@ export const USAGE = `Usage:
   stashpad accept <id>
   stashpad reject <id> [--reason "<why>"]
   stashpad audit [--json]
+  stashpad mcp                 serve the five agent tools over stdio (for MCP clients)
 
 Notes:
   A save with --source-type user goes straight into the store.
@@ -272,6 +274,9 @@ export async function run(argv, io = defaultIo()) {
       case "get":
         if (!id) return usageError(io, "get needs an id, for example: stashpad get db-choice");
         return cmdGet(io, dir, id, values);
+      case "mcp":
+        await serveMcp({ dir, input: process.stdin, output: process.stdout });
+        return 0;
       case "review":
         return cmdReview(io, dir, values);
       case "accept":
