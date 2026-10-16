@@ -15,7 +15,8 @@
     "build": "node scripts/build.mjs",
     "bench": "node scripts/bench-search.mjs",
     "test": "node --test",
-    "validate-memory": "node scripts/validate-memory.mjs"
+    "validate-memory": "node scripts/validate-memory.mjs",
+    "port": "node scripts/port-file.mjs"
   },
   "files": [
     "bin",
