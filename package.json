@@ -8,11 +8,17 @@
   "engines": {
     "node": ">=20"
   },
+  "bin": {
+    "stashpad": "bin/stashpad.mjs"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "validate-memory": "node scripts/validate-memory.mjs"
   },
   "files": [
+    "bin",
+    "src",
     "dist",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",

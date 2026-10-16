@@ -32,6 +32,8 @@ export const TRUST_BY_SOURCE = {
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+export const isValidId = (id) => typeof id === "string" && ID_PATTERN.test(id);
+
 function parseScalar(raw) {
   if (raw === "" || raw === "null") return null;
   if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
