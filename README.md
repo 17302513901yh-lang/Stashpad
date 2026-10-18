@@ -46,6 +46,8 @@ stashpad search "sqlite" --json
 stashpad save db-choice-v2 --kind decision --source-type user --source-ref "later statement" --text "We keep data in Postgres." --supersedes db-choice
 stashpad history db-choice-v2
 stashpad search database --kind decision --as-of 2026-03-01 --explain   # what was decided on that day, and why it matched
+stashpad entities                  # names, tools and files the memories talk about
+stashpad about Postgres            # every memory about it, and what is mentioned with it
 stashpad confirm db-choice-v2      # still true; doctor flags agent memories nobody confirmed for 180 days
 ```
 
@@ -73,7 +75,7 @@ stashpad audit
 }
 ```
 
-Five tools: `stashpad_search`, `stashpad_get`, `stashpad_recent`, `stashpad_save`, `stashpad_forget`.
+Six tools: `stashpad_search`, `stashpad_get`, `stashpad_recent`, `stashpad_about`, `stashpad_save`, `stashpad_forget`.
 
 ## Check it, import into it
 

@@ -30,5 +30,5 @@ test("the MCP save reply tells the agent how to supersede", () => {
 
 test("tools say which ones only read", () => {
   const readOnly = TOOLS.filter((t) => t.annotations.readOnlyHint).map((t) => t.name).sort();
-  assert.deepEqual(readOnly, ["stashpad_get", "stashpad_recent", "stashpad_search"]);
+  assert.deepEqual(readOnly, ["stashpad_about", "stashpad_get", "stashpad_recent", "stashpad_search"]);
 });

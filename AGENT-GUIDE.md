@@ -7,6 +7,7 @@ and a person decides what is kept. Read this once, then use the table below.
 
 | You want to | Use | What happens |
 |---|---|---|
+| everything about one thing (name, tool, file) | `stashpad_about` | memories that mention it, and related things |
 | find earlier facts | `stashpad_search` | ranked, current memories with ids; optional `kind` and `as_of` (what was valid on a date) |
 | read one memory | `stashpad_get` | text, source, dates, trust |
 | see what is new | `stashpad_recent` | current memories, newest first |

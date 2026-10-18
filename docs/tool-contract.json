@@ -45,6 +45,15 @@
       ]
     },
     {
+      "name": "stashpad_about",
+      "required": [
+        "name"
+      ],
+      "arguments": [
+        "name"
+      ]
+    },
+    {
       "name": "stashpad_forget",
       "required": [
         "id",
@@ -56,5 +65,5 @@
       ]
     }
   ],
-  "hash": "a59dd3a3fc0ccd821ef33566988c26f2480cb7a3c2616d90761a50ac5f8f302f"
+  "hash": "5dc5183e1d98cbada79a8009b0fb8fce3988c8b330f99806829c07c657f03fbb"
 }

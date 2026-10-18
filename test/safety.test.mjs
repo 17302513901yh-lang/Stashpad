@@ -161,7 +161,7 @@ test("CLI: snapshot, snapshots, restore needs --yes, migrate, contract, --versio
 
   h = harness();
   assert.equal(await run(["contract", "--json"], h.io), 0);
-  assert.equal(JSON.parse(h.out.join("\n")).tools.length, 5);
+  assert.equal(JSON.parse(h.out.join("\n")).tools.length, 6);
 
   h = harness();
   assert.equal(await run(["--version"], h.io), 0);

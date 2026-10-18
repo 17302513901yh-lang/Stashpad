@@ -42,13 +42,13 @@ test("notifications get no reply and unknown requests get an error", () => {
   assert.equal(reply.id, 7);
 });
 
-test("exactly five tools, with the names the plan defines", () => {
+test("exactly six tools, with the names the plan defines", () => {
   const reply = handleMessage({ jsonrpc: "2.0", id: 1, method: "tools/list" }, { dir: fresh() });
   assert.deepEqual(
     reply.result.tools.map((t) => t.name),
-    ["stashpad_search", "stashpad_get", "stashpad_recent", "stashpad_save", "stashpad_forget"],
+    ["stashpad_search", "stashpad_get", "stashpad_recent", "stashpad_save", "stashpad_about", "stashpad_forget"],
   );
-  assert.equal(TOOLS.length, 5);
+  assert.equal(TOOLS.length, 6);
 });
 
 test("search returns data-labelled results", () => {

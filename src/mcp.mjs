@@ -1,8 +1,9 @@
 // MCP server for Stashpad over stdio (newline-delimited JSON-RPC). No dependencies.
-// Agents only get five tools. Anything an agent writes waits for a person to accept it.
+// Agents only get six tools. Anything an agent writes waits for a person to accept it.
 import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
 import { parseMemory } from "./memory-format.mjs";
 import { VERSION } from "./version.mjs";
+import { aboutEntity } from "./entities.mjs";
 import {
   StoreError,
   listMemories,
@@ -67,6 +68,17 @@ export const TOOLS = [
         supersedes: { type: "string", description: "Id of the memory this one replaces, if any." },
       },
       required: ["id", "kind", "text", "source_ref"],
+    },
+  },
+  {
+    name: "stashpad_about",
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    description:
+      "Everything stored about one thing (a name, tool or file): the memories that mention it and what is mentioned with it.",
+    inputSchema: {
+      type: "object",
+      properties: { name: { type: "string", description: "The thing, for example 'Postgres' or 'src/cli.mjs'." } },
+      required: ["name"],
     },
   },
   {
@@ -156,6 +168,10 @@ function callTool(name, args, dir) {
             ? ` It looks related to: ${result.maybe_replaces.map((c) => c.id).join(", ")}. If it replaces one, propose it again with supersedes set to that id.`
             : "";
         return textResult(`Proposed ${args.id} (${result.status}). It is not stored until a person accepts it.${hint}`);
+      }
+      case "stashpad_about": {
+        requireArgs(name, args, ["name"]);
+        return jsonResult(aboutEntity(dir, String(args.name)));
       }
       case "stashpad_forget": {
         requireArgs(name, args, ["id", "reason"]);

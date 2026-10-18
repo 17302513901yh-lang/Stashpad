@@ -11,6 +11,7 @@ import { exportMemories } from "./export.mjs";
 import { archiveSource } from "./sources.mjs";
 import { buildBrief, DEFAULT_BRIEF_CHARS, HANDOVER_PREFIX, isHandoverId, syncAgentsFile } from "./brief.mjs";
 import { CLIENTS, setupText } from "./setup.mjs";
+import { aboutEntity, listEntities } from "./entities.mjs";
 import { runDoctor } from "./doctor.mjs";
 import { contractOf } from "./contract.mjs";
 import { VERSION, STORE_FORMAT } from "./version.mjs";
@@ -46,6 +47,8 @@ export const USAGE = `Usage:
   stashpad search <words...> [--limit N] [--all] [filters] [--explain] [--json]
       filters: --kind decision,preference  --source-type user,agent  --as-of YYYY-MM-DD (what was valid that day)
                --since YYYY-MM-DD  --until YYYY-MM-DD (on valid_from)
+  stashpad entities [--limit N] [--json]  names, tools and files the memories talk about, most mentioned first
+  stashpad about <name...> [--json]       the memories about one of them, and what is mentioned with it
   stashpad confirm <id>                   say a memory is still true (updates last_confirmed_at)
   stashpad forget <id> --reason "<why>"   ask for a memory to end (a person accepts it)
   stashpad review [--json]
@@ -55,7 +58,7 @@ export const USAGE = `Usage:
   stashpad import <file> [--format jsonl|text] [--source-ref "<source>"]   queue memories from an export
   stashpad export [--all] [--out <file>]   write memories as JSON Lines (current only; --all adds ended ones)
   stashpad eval [--json]       run the fixed checks and baselines in a temporary store
-  stashpad mcp                 serve the five agent tools over stdio (for MCP clients)
+  stashpad mcp                 serve the six agent tools over stdio (for MCP clients)
   stashpad ui [--port N] [--open]   review waiting memories in a page on this computer (Ctrl+C stops it)
   stashpad setup [generic|claude-code|vscode|codex|agents-md]   print the settings that connect an agent to Stashpad
   stashpad doctor [--json]             check that Stashpad and the store are healthy, with a fix for each problem
@@ -567,6 +570,36 @@ export async function run(argv, io = defaultIo()) {
       case "get":
         if (!id) return usageError(io, "get needs an id, for example: stashpad get db-choice");
         return cmdGet(io, dir, id, values);
+      case "entities": {
+        const limit = values.limit === undefined ? 30 : Number(values.limit);
+        if (!Number.isInteger(limit) || limit < 1 || limit > 500) return usageError(io, "--limit must be a whole number from 1 to 500");
+        const { total, rows } = listEntities(dir, { limit, includeEnded: values.all === true });
+        if (values.json) io.stdout(JSON.stringify({ total, rows }));
+        else if (rows.length === 0) io.stdout("No names, tools or files found in the current memories.");
+        else {
+          for (const row of rows) io.stdout(`${String(row.memories).padStart(3)}  ${row.name}`);
+          if (total > rows.length) io.stdout(`${total - rows.length} more; use --limit to see them.`);
+        }
+        return 0;
+      }
+      case "about": {
+        const name = positionals.slice(1).join(" ").trim();
+        if (name === "") return usageError(io, 'about needs a name, for example: stashpad about Postgres');
+        const result = aboutEntity(dir, name, { includeEnded: values.all === true });
+        if (values.json) {
+          io.stdout(JSON.stringify(result));
+          return 0;
+        }
+        if (!result.found) {
+          io.stdout(`Nothing stored about "${name}".${result.did_you_mean.length ? ` Did you mean: ${result.did_you_mean.join(", ")}?` : ""}`);
+          return 0;
+        }
+        io.stdout(`# ${result.label}`);
+        io.stdout(`${result.name}: ${result.memories.length} memory/memories`);
+        for (const m of result.memories) io.stdout(`  ${m.id}  ${m.kind}  ${m.summary}`);
+        if (result.related.length > 0) io.stdout(`Mentioned with: ${result.related.map((r) => `${r.name} (${r.together})`).join(", ")}`);
+        return 0;
+      }
       case "confirm": {
         if (!id) return usageError(io, "confirm needs an id, for example: stashpad confirm db-choice");
         const done = confirmMemory(dir, id);
