@@ -23,6 +23,7 @@ import {
   validateMemory,
 } from "./memory-format.mjs";
 import { bm25Rank, keyTerms } from "./search.mjs";
+import { synonymMapFor } from "./synonyms.mjs";
 import { applyTemporalInvalidation } from "../third_party/graphiti/temporal.mjs";
 import { MAX_TEXT_CHARS, MAX_WAITING, findHiddenCharacters, findInstructionLikeText, findSecrets } from "./security.mjs";
 import { lstatSync } from "node:fs";
@@ -604,7 +605,7 @@ export function searchMemories(dir, query, { includeEnded = false, limit = 10, t
   }));
   const byId = new Map(searched.map((entry) => [entry.id, entry]));
 
-  const ranked = bm25Rank(docs, query).slice(0, limit);
+  const ranked = bm25Rank(docs, query, { synonyms: synonymMapFor(dir) }).slice(0, limit);
   const results = ranked.map((hit) => ({
     ...summarize(byId.get(hit.id)),
     score: Math.round(hit.score * 100) / 100,

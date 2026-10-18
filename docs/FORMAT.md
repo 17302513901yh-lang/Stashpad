@@ -48,3 +48,16 @@ node scripts/validate-memory.mjs <folder>   # checks any folder
 ```
 
 The check exits with code 1 and names each problem and its file.
+
+## Search words and synonyms
+
+Search matches words. A note can help itself by ending with a line such as `Also: db, datastore`. Those words are part of the text and are searched like any other.
+
+A store can also hold `synonyms.json` next to the memories (it is not a memory file and is ignored by the format checks):
+
+```json
+{ "groups": [["deployment", "rollout", "uitrol"], ["pr", "pull request"]] }
+```
+
+A match through a synonym counts half as much as an exact word, so exact matches rank first. Small English and Dutch groups are built in. At most 500 groups of 2 to 20 words; the file may be up to 64 KB. A broken file is ignored and `stashpad doctor` reports it.
+

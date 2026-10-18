@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { validateDocuments } from "./memory-format.mjs";
 import { handleMessage, TOOLS } from "./mcp.mjs";
 import { MARKER, isInsideInstall, listSnapshots, readStoreFormat } from "./safety.mjs";
+import { loadStoreSynonyms } from "./synonyms.mjs";
 import { saveMemory } from "./store.mjs";
 import { STORE_FORMAT, VERSION } from "./version.mjs";
 
@@ -91,6 +92,10 @@ function checkStore(dir) {
   const pending = join(dir, "pending");
   const waiting = existsSync(pending) ? readdirSync(pending).length : 0;
   if (waiting > 0) checks.push(warn("review queue", `${waiting} write(s) waiting for review`, 'Run "stashpad review", then accept or reject.'));
+  const synonyms = loadStoreSynonyms(dir);
+  if (synonyms.problem !== null) {
+    checks.push(warn("synonyms", synonyms.problem, "Fix or delete synonyms.json. Search works without it."));
+  }
   checks.push(ok("snapshots", `${listSnapshots(dir).length} snapshot(s)`));
   if (isInsideInstall(dir)) {
     checks.push(warn("location", "the store is inside the Stashpad folder", "Set STASHPAD_DIR to a folder outside it, so an update cannot replace your memories."));

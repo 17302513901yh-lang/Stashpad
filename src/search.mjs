@@ -29,9 +29,18 @@ export function keyTerms(text) {
 
 // docs: [{ id, text }]. Returns [{ id, score }] for documents that match at least one term,
 // best match first. Ties are ordered by id so results are stable.
-export function bm25Rank(docs, query) {
+// Options: synonyms (Map term -> Set of terms) and synonymWeight. A synonym counts at that weight.
+export function bm25Rank(docs, query, { synonyms = null, synonymWeight = 0.5 } = {}) {
   const queryTerms = [...new Set(termsOf(query))];
   if (queryTerms.length === 0) return [];
+  const weights = new Map(queryTerms.map((term) => [term, 1]));
+  if (synonyms !== null) {
+    for (const term of queryTerms) {
+      for (const other of synonyms.get(term) ?? []) {
+        if (!weights.has(other)) weights.set(other, synonymWeight);
+      }
+    }
+  }
 
   const tokenized = docs.map((doc) => termsOf(doc.text));
   const count = docs.length;
@@ -52,13 +61,13 @@ export function bm25Rank(docs, query) {
     for (const token of tokens) frequencies.set(token, (frequencies.get(token) ?? 0) + 1);
 
     let score = 0;
-    for (const term of queryTerms) {
+    for (const [term, weight] of weights) {
       const frequency = frequencies.get(term) ?? 0;
       if (frequency === 0) continue;
       const df = documentFrequency.get(term);
       const idf = Math.log(1 + (count - df + 0.5) / (df + 0.5));
       const lengthNorm = 1 - B + (B * tokens.length) / avgLength;
-      score += (idf * frequency * (K1 + 1)) / (frequency + K1 * lengthNorm);
+      score += (weight * idf * frequency * (K1 + 1)) / (frequency + K1 * lengthNorm);
     }
 
     if (score > 0) results.push({ id: doc.id, score });

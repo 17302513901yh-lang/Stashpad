@@ -106,6 +106,7 @@ Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `sou
 
 ## Docs
 
+- [Search words and synonyms](docs/FORMAT.md#search-words-and-synonyms)
 - [Use with any agent](docs/ANY-AGENT.md)
 - [Updating safely: snapshots, restore, migrate](docs/UPDATING.md)
 - [Memory file format](docs/FORMAT.md)
