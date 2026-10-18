@@ -15,6 +15,7 @@ import {
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { StoreError } from "./errors.mjs";
+import { withStoreLock } from "./lock.mjs";
 import { validateDocuments } from "./memory-format.mjs";
 import { STORE_FORMAT, VERSION } from "./version.mjs";
 
@@ -114,7 +115,7 @@ export function listSnapshots(dir) {
 }
 
 // Copies the memories, waiting writes, rejected writes and the audit log into <store>/.snapshots/<name>/.
-export function createSnapshot(dir, label = "manual", now = new Date()) {
+function createSnapshotUnlocked(dir, label = "manual", now = new Date()) {
   if (!existsSync(dir)) throw new StoreError(`nothing to snapshot: ${dir} does not exist.`);
   const stamp = now.toISOString().replace(/[:.]/g, "-");
   const clean =
@@ -146,7 +147,7 @@ export function autoSnapshot(dir, now = new Date()) {
 }
 
 // Puts a snapshot back. The current state is snapshotted first, so a restore can be undone.
-export function restoreSnapshot(dir, name, now = new Date()) {
+function restoreSnapshotUnlocked(dir, name, now = new Date()) {
   if (!SNAPSHOT_NAME.test(name)) {
     throw new StoreError(`"${name}" is not a snapshot name. Run "stashpad snapshots" to see them.`);
   }
@@ -171,7 +172,7 @@ export function restoreSnapshot(dir, name, now = new Date()) {
 }
 
 // Brings a store to the current format. With dryRun nothing is written. A real run snapshots first.
-export function migrateStore(dir, { dryRun = false, now = new Date() } = {}) {
+function migrateStoreUnlocked(dir, { dryRun = false, now = new Date() } = {}) {
   if (!existsSync(dir)) throw new StoreError(`no store at ${dir}.`);
   const from = readStoreFormat(dir) ?? 0;
   if (from > STORE_FORMAT) {
@@ -200,3 +201,13 @@ export function isInsideInstall(dir) {
   const target = resolve(dir);
   return target === root || target.startsWith(root + sep);
 }
+
+export const createSnapshot = (dir, ...args) => {
+  if (!existsSync(dir)) throw new StoreError(`nothing to snapshot: ${dir} does not exist.`);
+  return withStoreLock(dir, () => createSnapshotUnlocked(dir, ...args));
+};
+export const restoreSnapshot = (dir, ...args) => withStoreLock(dir, () => restoreSnapshotUnlocked(dir, ...args));
+export const migrateStore = (dir, ...args) => {
+  if (!existsSync(dir)) throw new StoreError(`no store at ${dir}.`);
+  return withStoreLock(dir, () => migrateStoreUnlocked(dir, ...args));
+};

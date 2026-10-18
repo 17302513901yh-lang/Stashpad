@@ -29,6 +29,7 @@ import { MAX_TEXT_CHARS, MAX_WAITING, findHiddenCharacters, findInstructionLikeT
 import { lstatSync } from "node:fs";
 
 import { StoreError } from "./errors.mjs";
+import { withStoreLock } from "./lock.mjs";
 import { gateReason } from "./gate.mjs";
 import { autoSnapshot, prepareForWrite } from "./safety.mjs";
 
@@ -268,7 +269,7 @@ function queueForReview(dir, meta, body) {
 }
 
 // User memories go straight into the store. Anything from an agent, tool or the web is queued.
-export function saveMemory(dir, input, today = todayIso()) {
+function saveMemoryUnlocked(dir, input, today = todayIso()) {
   const { meta, body } = buildMemory(input, today);
   prepareForWrite(dir);
   if (meta.source_type !== "user") {
@@ -292,7 +293,7 @@ function pendingPath(dir, id) {
 }
 
 // A request from an agent to end a memory. Nothing is deleted. The memory stays, with an end date.
-export function queueForget(dir, target, reason, sourceRef = "agent request", sourceType = "agent") {
+function queueForgetUnlocked(dir, target, reason, sourceRef = "agent request", sourceType = "agent") {
   if (!isValidId(target)) {
     throw new StoreError(`invalid id "${target}". Ids use lowercase letters, digits and hyphens.`);
   }
@@ -457,7 +458,7 @@ export function listPending(dir) {
 }
 
 // Accepts a waiting write (or ending request). If the store check fails, it stays in pending/.
-export function acceptPending(dir, id) {
+function acceptPendingUnlocked(dir, id) {
   const path = pendingPath(dir, id);
   prepareForWrite(dir);
   if (path.endsWith(".json")) {
@@ -478,7 +479,7 @@ export function acceptPending(dir, id) {
 }
 
 // Moves a waiting write to rejected/. It never reaches the store, and the reason is logged.
-export function rejectPending(dir, id, reason = null) {
+function rejectPendingUnlocked(dir, id, reason = null) {
   const from = pendingPath(dir, id);
   if (reason !== null && findSecrets(reason).length > 0) {
     throw new StoreError("not rejected: the reason looks like a secret. Remove it and try again.");
@@ -612,3 +613,9 @@ export function searchMemories(dir, query, { includeEnded = false, limit = 10, t
   }));
   return { total: searched.length, results, skipped };
 }
+
+// Public write functions: each runs while holding the store lock.
+export const saveMemory = (dir, ...args) => withStoreLock(dir, () => saveMemoryUnlocked(dir, ...args));
+export const queueForget = (dir, ...args) => withStoreLock(dir, () => queueForgetUnlocked(dir, ...args));
+export const acceptPending = (dir, ...args) => withStoreLock(dir, () => acceptPendingUnlocked(dir, ...args));
+export const rejectPending = (dir, ...args) => withStoreLock(dir, () => rejectPendingUnlocked(dir, ...args));
