@@ -31,7 +31,7 @@ import { lstatSync } from "node:fs";
 
 import { StoreError } from "./errors.mjs";
 import { withStoreLock } from "./lock.mjs";
-import { gateReason } from "./gate.mjs";
+import { gateReason, relatedTo } from "./gate.mjs";
 import { autoSnapshot, prepareForWrite } from "./safety.mjs";
 
 export { StoreError };
@@ -273,10 +273,21 @@ function queueForReview(dir, meta, body) {
 function saveMemoryUnlocked(dir, input, today = todayIso()) {
   const { meta, body } = buildMemory(input, today);
   prepareForWrite(dir);
+  // Current memories of the same kind that look related: the new one may replace one of them.
+  const today2 = todayIso();
+  const related =
+    meta.supersedes === null
+      ? relatedTo(
+          body,
+          readAll(dir)
+            .entries.filter((e) => e.id !== meta.id && e.meta.kind === meta.kind && isCurrent(e.meta, today2))
+            .map((e) => ({ id: e.id, body: e.body })),
+        )
+      : [];
   if (meta.source_type !== "user") {
-    return { status: "queued", path: queueForReview(dir, meta, body) };
+    return { status: "queued", path: queueForReview(dir, meta, body), maybe_replaces: related };
   }
-  return { status: "saved", path: commitMemory(dir, meta, body) };
+  return { status: "saved", path: commitMemory(dir, meta, body), maybe_replaces: related };
 }
 
 // Path of a waiting write. A memory is <id>.md, an ending request is forget-<id>.json.

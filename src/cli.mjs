@@ -164,11 +164,15 @@ async function cmdSave(io, dir, id, values) {
   });
 
   if (values.json) {
-    io.stdout(JSON.stringify({ status: result.status, id, path: result.path }));
+    io.stdout(JSON.stringify({ status: result.status, id, path: result.path, maybe_replaces: result.maybe_replaces }));
   } else if (result.status === "queued") {
     io.stdout(`Queued ${id} for review (not in the store yet). See it with "stashpad review".`);
   } else {
     io.stdout(`Saved ${id} to ${result.path}`);
+  }
+  if (!values.json && result.maybe_replaces.length > 0) {
+    const ids = result.maybe_replaces.map((c) => c.id).join(", ");
+    io.stdout(`Looks related to: ${ids}. If it replaces one, end the old one: stashpad forget <id> --reason "replaced by ${id}"`);
   }
   return 0;
 }
