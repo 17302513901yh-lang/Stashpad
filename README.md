@@ -11,7 +11,7 @@ Stashpad keeps what an agent learns as plain Markdown files. Every memory has a 
 - **No dependencies.** Node 20 or newer is all it needs.
 
 ```bash
-npm install -g @laaielichter/stashpad   # the command is "stashpad"; or without installing: npx @laaielichter/stashpad --help
+npm install -g stashpad        # or run without installing: npx stashpad --help
 stashpad save db-choice --kind decision --source-type user --source-ref "chat" --text "We keep data in SQLite."
 stashpad search sqlite
 stashpad setup                 # print the MCP settings for your agent
