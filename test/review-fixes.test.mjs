@@ -101,9 +101,9 @@ test("the forget- prefix is reserved for ending requests", () => {
 
 test("rejecting a second write with the same id keeps the first rejection", () => {
   const dir = fresh();
-  saveMemory(dir, { id: "dup-one", kind: "fact", text: "First proposal.", sourceType: "agent", sourceRef: "a" }, "2026-10-01");
+  saveMemory(dir, { id: "dup-one", kind: "fact", text: "First proposal about caching layers.", sourceType: "agent", sourceRef: "a" }, "2026-10-01");
   rejectPending(dir, "dup-one", "first reason");
-  saveMemory(dir, { id: "dup-one", kind: "fact", text: "Second proposal.", sourceType: "agent", sourceRef: "b" }, "2026-10-02");
+  saveMemory(dir, { id: "dup-one", kind: "fact", text: "Second idea regarding database backups.", sourceType: "agent", sourceRef: "b" }, "2026-10-02");
   rejectPending(dir, "dup-one", "second reason");
   const rejected = readdirSync(join(dir, "rejected")).sort();
   assert.deepEqual(rejected, ["dup-one-2.md", "dup-one.md"]);

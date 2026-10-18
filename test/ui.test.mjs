@@ -113,7 +113,7 @@ test("rejecting from the page keeps the record with the reason", async () => {
 
 test("a write that is not JSON is refused with 415, and a bad body with 400", async () => {
   const dir = fresh();
-  saveMemory(dir, { id: "agent-note", kind: "fact", text: "A fact.", sourceType: "agent", sourceRef: "notes" }, "2026-10-01");
+  saveMemory(dir, { id: "agent-note", kind: "fact", text: "A short test fact.", sourceType: "agent", sourceRef: "notes" }, "2026-10-01");
   await withUi(dir, async (ui) => {
     const headers = { "x-stashpad-token": ui.token };
     const plain = await call(ui.port, { method: "POST", path: "/api/accept", headers: { ...headers, "content-type": "text/plain" }, raw: "{}" });

@@ -24,10 +24,11 @@ import {
 } from "./memory-format.mjs";
 import { bm25Rank, keyTerms } from "./search.mjs";
 import { applyTemporalInvalidation } from "../third_party/graphiti/temporal.mjs";
-import { findInstructionLikeText, findSecrets } from "./security.mjs";
+import { MAX_TEXT_CHARS, MAX_WAITING, findHiddenCharacters, findInstructionLikeText, findSecrets } from "./security.mjs";
 import { lstatSync } from "node:fs";
 
 import { StoreError } from "./errors.mjs";
+import { gateReason } from "./gate.mjs";
 import { autoSnapshot, prepareForWrite } from "./safety.mjs";
 
 export { StoreError };
@@ -123,6 +124,17 @@ function buildMemory(input, today) {
   if (/[\r\n]/.test(sourceRef)) {
     throw new StoreError("source-ref must be one line of text");
   }
+  if (typeof text !== "string" || text.trim() === "") {
+    throw new StoreError("not saved: the memory text is empty.");
+  }
+  if (text.length > MAX_TEXT_CHARS) {
+    throw new StoreError(
+      `not saved: the text is ${text.length} characters; the limit is ${MAX_TEXT_CHARS}. Split it into separate memories.`,
+    );
+  }
+  if (findHiddenCharacters(`${text}\n${sourceRef}`).length > 0) {
+    throw new StoreError("not saved: the text holds invisible characters (zero-width or direction controls). Remove them.");
+  }
   const secrets = findSecrets(`${text}\n${sourceRef}`);
   if (secrets.length > 0) {
     throw new StoreError(
@@ -209,6 +221,23 @@ function commitMemory(dir, meta, body) {
   return path;
 }
 
+// Bodies of current memories and waiting writes, for the duplicate check.
+function comparableBodies(dir, pendingFolder, ownId) {
+  const today = todayIso();
+  const list = readAll(dir)
+    .entries.filter((entry) => isCurrent(entry.meta, today))
+    .map((entry) => ({ id: entry.id, body: entry.body }));
+  for (const name of readdirSync(pendingFolder)) {
+    if (!name.endsWith(".md")) continue;
+    try {
+      list.push({ id: name.slice(0, -3), body: parseMemory(readFileSync(join(pendingFolder, name), "utf8")).body });
+    } catch {
+      // an unreadable waiting file is reported by review, not here
+    }
+  }
+  return list.filter((item) => item.id !== ownId);
+}
+
 // Writes a memory that an agent, tool or web page proposed. It waits in pending/.
 function queueForReview(dir, meta, body) {
   const { id } = meta;
@@ -217,6 +246,16 @@ function queueForReview(dir, meta, body) {
   }
   const folder = join(dir, PENDING);
   mkdirSync(folder, { recursive: true });
+  const refused = gateReason(body, comparableBodies(dir, folder, id));
+  if (refused !== null) {
+    appendAudit(dir, { action: "refused", id, source_type: meta.source_type, source_ref: meta.source_ref, reason: refused });
+    throw new StoreError(`not queued: ${refused}`);
+  }
+  if (readdirSync(folder).length >= MAX_WAITING) {
+    throw new StoreError(
+      `not queued: ${MAX_WAITING} writes are already waiting for review. Accept or reject some first ("stashpad review").`,
+    );
+  }
   const path = join(folder, `${id}.md`);
   assertSafeFile(path);
   if (existsSync(path)) {

@@ -87,7 +87,11 @@ Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `sou
 
 - Plain files first. The files are the source of truth.
 - Nothing from an agent, tool or web page is stored until a person accepts it.
-- Secrets are refused at write time.
+- Secrets are refused at write time (keys, tokens, JWTs, Bearer tokens, passwords in connection strings).
+- Invisible characters are refused, and look-alike or split-up words cannot hide an instruction or a secret.
+- Instruction-like text (English and Dutch) is flagged for the reviewer.
+- A gatekeeper refuses agent notes that are too short or near-copies of an existing or waiting memory, and logs the refusal in the audit log. Notes a person writes are never blocked.
+- Limits: 4000 characters per memory, 200 writes waiting for review.
 - Recalled text is labelled as data, not instructions.
 
 ## Docs
