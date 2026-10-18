@@ -9,7 +9,7 @@ import { importMemories } from "./importer.mjs";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { exportMemories } from "./export.mjs";
 import { archiveSource } from "./sources.mjs";
-import { buildBrief, DEFAULT_BRIEF_CHARS, HANDOVER_PREFIX, syncAgentsFile } from "./brief.mjs";
+import { buildBrief, DEFAULT_BRIEF_CHARS, HANDOVER_PREFIX, isHandoverId, syncAgentsFile } from "./brief.mjs";
 import { CLIENTS, setupText } from "./setup.mjs";
 import { runDoctor } from "./doctor.mjs";
 import { contractOf } from "./contract.mjs";
@@ -427,7 +427,7 @@ async function cmdHandover(io, dir, values) {
   for (let n = 2; existing.has(id) || existsSync(join(dir, "pending", `${id}.md`)); n += 1) {
     id = `${HANDOVER_PREFIX}${today}-${n}`;
   }
-  const previous = rows.filter((r) => r.id.startsWith(HANDOVER_PREFIX)).map((r) => r.id).sort().pop() ?? null;
+  const previous = rows.filter((r) => isHandoverId(r.id)).map((r) => r.id).sort().pop() ?? null;
   const sourceType = values["source-type"] ?? "user";
   const result = saveMemory(dir, {
     id,

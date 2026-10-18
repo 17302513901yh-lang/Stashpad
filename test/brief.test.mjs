@@ -76,3 +76,11 @@ test("sync-agents adds, updates and keeps the text around its block", async () =
   assert.equal(await run(["sync-agents", file, "--dir", dir], h.io), 0);
   assert.match(h.out.join("\n"), /Do not commit/);
 });
+
+test("a normal note whose id starts with handover- is not taken for a handover note", () => {
+  const dir = join(fresh(), "s");
+  put(dir, "handover-note", "fact", "A handover note tells the next session what comes next.");
+  put(dir, "handover-2026-10-05", "task", "Half done: the importer. Next: tests.");
+  const lines = buildBrief(dir).text.split("\n");
+  assert.match(lines[2], /handover-2026-10-05/);
+});

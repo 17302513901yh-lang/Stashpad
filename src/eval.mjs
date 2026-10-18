@@ -4,6 +4,8 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { tokenize } from "./search.mjs";
+import { buildBrief } from "./brief.mjs";
+import { createSnapshot, restoreSnapshot } from "./safety.mjs";
 import { handleMessage } from "./mcp.mjs";
 import { listPending, saveMemory, searchMemories } from "./store.mjs";
 
@@ -28,6 +30,26 @@ export const NOTES = [
   ["user-editor", "The example project uses a video editor called Example Studio."],
   ["token-budget", "Retrieval returns at most a fixed token budget per call."],
   ["token-profile", "A small profile of a few hundred tokens is always loaded first."],
+  ["snapshot-daily", "A snapshot of the store is taken once per day before a memory is ended."],
+  ["format-marker", "A marker file records the store format so older code cannot write into newer stores."],
+  ["gatekeeper-rule", "Agent notes that are too short or near copies of existing ones are refused."],
+  ["handover-note", "A handover note tells the next session what is done and what comes next."],
+  ["brief-limit", "The session brief stays under fifteen hundred characters so hooks do not cut it."],
+  ["hidden-chars", "Invisible characters are refused because they can hide an instruction."],
+  ["ci-matrix", "Continuous integration runs on Linux, Windows and macOS with Node 20 and 22."],
+  ["ui-local", "The review page only answers on the local computer and uses a per run token."],
+  ["export-jsonl", "Memories can be exported as JSON Lines to avoid lock in."],
+  ["import-queue", "Imported memories wait in review and are not searchable until accepted."],
+  ["temporal-graphiti", "The ending of old facts is ported from Graphiti under the Apache license."],
+  ["search-bm25", "Search uses BM25 ranking written in plain JavaScript."],
+  ["nl-taal", "De gebruiker wil korte berichten in eenvoudig Nederlands."],
+  ["nl-database", "De database van het project is Postgres versie zestien."],
+  ["nl-deploy", "Elke dinsdag wordt de hoofdtak uitgerold naar productie."],
+  ["nl-review", "Nieuwe notities van agents wachten op goedkeuring van een persoon."],
+  ["nl-editor", "Het voorbeeldproject gebruikt een video editor met de naam Voorbeeldstudio."],
+  ["nl-geheim", "Wachtwoorden en sleutels mogen nooit in een notitie staan."],
+  ["mcp-tools", "The MCP server offers five tools for search, get, recent, save and forget."],
+  ["mcp-contract", "A golden file records the tool names so a change cannot happen by accident."],
 ];
 
 // Each query has one expected memory. Words are chosen to match the text, not the id.
@@ -45,13 +67,44 @@ export const QUERIES = [
   ["token budget", "token-budget"],
   ["model seed score", "eval-models"],
   ["Node", "lang-node"],
+  ["snapshot once per day", "snapshot-daily"],
+  ["format marker older code", "format-marker"],
+  ["near copies refused", "gatekeeper-rule"],
+  ["handover next session", "handover-note"],
+  ["fifteen hundred characters hooks", "brief-limit"],
+  ["invisible characters", "hidden-chars"],
+  ["Windows macOS Linux", "ci-matrix"],
+  ["review page token", "ui-local"],
+  ["JSON Lines lock in", "export-jsonl"],
+  ["imported accepted searchable", "import-queue"],
+  ["Graphiti Apache", "temporal-graphiti"],
+  ["BM25", "search-bm25"],
+  ["eenvoudig Nederlands berichten", "nl-taal"],
+  ["Postgres versie", "nl-database"],
+  ["dinsdag uitgerold", "nl-deploy"],
+  ["goedkeuring agents", "nl-review"],
+  ["Voorbeeldstudio", "nl-editor"],
+  ["wachtwoorden sleutels", "nl-geheim"],
+  ["five tools", "mcp-tools"],
+  ["golden file tool names", "mcp-contract"],
+];
+
+// Harder questions: the words differ from the note (paraphrase). Word search is expected to miss
+// some of them. They are reported honestly as a metric and are not required to pass.
+export const HARD_QUERIES = [
+  ["which editor theme does he like", "ui-theme-dark"],
+  ["where is the data kept", "db-markdown"],
+  ["how do I stop leaking passwords", "security-secrets"],
+  ["what runs on every operating system", "ci-matrix"],
+  ["how are old facts retired", "temporal-graphiti"],
+  ["wat gebeurt er met nieuwe agent notities", "nl-review"],
 ];
 
 // Questions whose answer is not in the store. A good tool returns nothing, not a guess.
 // Word search matches shared words, so each question here shares no word with the fixed set.
 // (A question such as "tax return" would match "returns" through plural folding; that is a
 // known limit of word search, not an abstention failure.)
-export const ABSENT = ["tax filing", "zebra", "kubernetes cluster"];
+export const ABSENT = ["tax filing", "zebra", "kubernetes cluster", "voetbal uitslag", "hurricane forecast"];
 
 function grepBaseline(notes, query) {
   const words = tokenize(query);
@@ -154,17 +207,55 @@ export function runEval(dirOverride) {
   );
   check("a path-like id is refused by the agent tools", pathReply.result.isError === true, "stashpad_get ../escape");
 
+  // Paraphrased questions: measured, not required.
+  let hardTop3 = 0;
+  for (const [query, expected] of HARD_QUERIES) {
+    if (searchMemories(dir, query, { limit: 3 }).results.some((r) => r.id === expected)) hardTop3 += 1;
+  }
+
+  // The gatekeeper refuses a near copy from an agent and a hidden character from anyone.
+  let copyRefused = false;
+  try {
+    saveMemory(dir, { id: "agent-copy", kind: "fact", text: "Markdown files are the source of truth for every memory", sourceType: "agent", sourceRef: "eval fixture" }, "2026-10-04");
+  } catch {
+    copyRefused = true;
+  }
+  let hiddenRefused = false;
+  try {
+    saveMemory(dir, { id: "hidden-try", kind: "fact", text: "Plain note with a hidden\u200B character inside.", sourceType: "user", sourceRef: "eval fixture" }, "2026-10-04");
+  } catch {
+    hiddenRefused = true;
+  }
+  check("the gatekeeper refuses a near copy from an agent", copyRefused, `refused: ${copyRefused}`);
+  check("invisible characters are refused", hiddenRefused, `refused: ${hiddenRefused}`);
+
+  // The brief is short, shows the handover first and holds back orders.
+  saveMemory(dir, { id: "handover-2026-10-05", kind: "task", text: "Half done: the importer. Next: add tests for it.", sourceType: "user", sourceRef: "eval fixture" }, "2026-10-05");
+  const brief = buildBrief(dir, { today: "2026-10-05" });
+  check(
+    "the brief is short and shows the handover note first",
+    brief.text.length <= 1500 && brief.text.split("\n")[2]?.includes("handover-2026-10-05"),
+    `${brief.text.length} characters`,
+  );
+
+  // A snapshot can be restored.
+  const snap = createSnapshot(dir, "eval");
+  saveMemory(dir, { id: "after-snap", kind: "fact", text: "This note is written after the snapshot was taken.", sourceType: "user", sourceRef: "eval fixture" }, "2026-10-06");
+  restoreSnapshot(dir, snap.name);
+  check("a restore brings the store back to the snapshot", !existsSync(join(dir, "after-snap.md")), "after-snap.md gone");
+
   const grepTop1Rate = grepTop1 / QUERIES.length;
   const stashTop1Rate = top1 / QUERIES.length;
   return {
     tool: "stashpad",
     models: "none: deterministic, no language model called",
-    data: `${NOTES.length} fixed memories, ${QUERIES.length} queries, ${ABSENT.length} absent questions`,
+    data: `${NOTES.length} fixed memories, ${QUERIES.length} queries, ${ABSENT.length} absent questions, ${HARD_QUERIES.length} paraphrased questions (not required)`,
     cases,
     all_passed: cases.every((c) => c.passed),
     metrics: {
       stashpad_recall_at_1: Math.round(stashTop1Rate * 1000) / 1000,
       stashpad_recall_at_3: Math.round((top3 / QUERIES.length) * 1000) / 1000,
+      paraphrase_recall_at_3: Math.round((hardTop3 / HARD_QUERIES.length) * 1000) / 1000,
       grep_baseline_recall_at_1: Math.round(grepTop1Rate * 1000) / 1000,
       full_context_tokens: fullContextTokens,
       stashpad_result_tokens_estimate: stashTokens,

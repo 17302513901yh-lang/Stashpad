@@ -9,6 +9,8 @@ export const DEFAULT_BRIEF_CHARS = 1500;
 const KIND_ORDER = ["preference", "decision", "task", "fact"];
 const LINE_CHARS = 160;
 export const HANDOVER_PREFIX = "handover-";
+// Only ids made by "stashpad handover" count, so a normal note called handover-something is not mistaken for one.
+export const isHandoverId = (id) => /^handover-\d{4}-\d{2}-\d{2}(?:-\d+)?$/.test(id);
 
 function oneLine(text, max) {
   const flat = text.replace(/\s+/g, " ").trim();
@@ -16,7 +18,7 @@ function oneLine(text, max) {
 }
 
 function rank(entry) {
-  const handover = entry.id.startsWith(HANDOVER_PREFIX) ? 0 : 1;
+  const handover = isHandoverId(entry.id) ? 0 : 1;
   const kind = KIND_ORDER.indexOf(entry.meta.kind);
   return [handover, kind < 0 ? KIND_ORDER.length : kind];
 }
@@ -28,8 +30,8 @@ export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayI
   const heldBack = current.length - safe.length;
 
   // Only the newest handover note is shown; older ones are history.
-  const handovers = safe.filter((e) => e.id.startsWith(HANDOVER_PREFIX)).sort((a, b) => b.id.localeCompare(a.id));
-  const others = safe.filter((e) => !e.id.startsWith(HANDOVER_PREFIX));
+  const handovers = safe.filter((e) => isHandoverId(e.id)).sort((a, b) => b.id.localeCompare(a.id));
+  const others = safe.filter((e) => !isHandoverId(e.id));
   const ordered = [...handovers.slice(0, 1), ...others].sort((a, b) => {
     const [ah, ak] = rank(a);
     const [bh, bk] = rank(b);

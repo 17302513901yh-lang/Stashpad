@@ -74,7 +74,7 @@ Five tools: `stashpad_search`, `stashpad_get`, `stashpad_recent`, `stashpad_save
 ## Check it, import into it
 
 ```bash
-stashpad eval                          # fixed checks and baselines; no language model is called
+stashpad eval                          # 40 notes, 33 queries (English and Dutch), safety checks; no language model is called. Paraphrased questions are measured too (about 2 of 3 found): word search misses some rewordings, and that is reported openly.
 stashpad import notes.jsonl            # queue memories from an export; they wait for review
 stashpad export --out memories.jsonl   # back up current memories as JSON Lines (--all adds ended ones)
 stashpad save <id> --kind fact --source-type user --source-file notes.txt --text "..."   # keeps a copy of the raw source
