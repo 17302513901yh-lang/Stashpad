@@ -1,0 +1,45 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.laaielichter/stashpad",
+  "title": "Stashpad",
+  "description": "Local memory for any AI agent: Markdown files with sources, a review queue and search.",
+  "websiteUrl": "https://github.com/laaielichter/stashpad",
+  "repository": {
+    "url": "https://github.com/laaielichter/stashpad",
+    "source": "github"
+  },
+  "version": "0.2.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "stashpad",
+      "version": "0.2.1",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "STASHPAD_DIR",
+          "description": "Folder where the memories live (default: ./.stashpad/memories in the working folder)",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "filepath"
+        },
+        {
+          "name": "STASHPAD_PASSPHRASE",
+          "description": "Only for a store encrypted with 'stashpad encrypt'",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

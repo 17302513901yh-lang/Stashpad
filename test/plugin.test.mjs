@@ -57,3 +57,13 @@ test("setup run through npx points at npx, not at a temporary cache path", async
   assert.deepEqual(JSON.parse(text.slice(text.indexOf("{"))).mcpServers.stashpad, { command: "npx", args: ["-y", "stashpad", "mcp"] });
   assert.match(setupText("claude-code", { bin: "C:\\Users\\x\\AppData\\npm-cache\\_npx\\1\\node_modules\\stashpad\\bin\\stashpad.mjs" }), /-- npx -y stashpad mcp$/);
 });
+
+test("server.json for the MCP registry matches the package", () => {
+  const server = json("server.json");
+  const pkg = json("package.json");
+  assert.equal(server.name, pkg.mcpName);
+  assert.equal(server.version, pkg.version);
+  assert.equal(server.packages[0].identifier, pkg.name);
+  assert.equal(server.packages[0].version, pkg.version);
+  assert.ok(server.description.length <= 100);
+});
