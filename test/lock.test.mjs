@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { LOCK_FILE, withStoreLock } from "../src/lock.mjs";
 import { saveMemory, StoreError } from "../src/store.mjs";
 
@@ -13,7 +13,7 @@ const fresh = () => join(mkdtempSync(join(tmpdir(), "stashpad-lock-")), "s");
 
 function writer(dir, prefix, count) {
   const code = `
-    import { saveMemory } from ${JSON.stringify(join(root, "src", "store.mjs"))};
+    import { saveMemory } from ${JSON.stringify(pathToFileURL(join(root, "src", "store.mjs")).href)};
     for (let i = 0; i < ${count}; i += 1) {
       saveMemory(${JSON.stringify(dir)}, { id: "${prefix}-" + i, kind: "fact", text: "Parallel note ${prefix} number " + i + " about topic " + i, sourceType: "user", sourceRef: "lock test" });
     }`;
