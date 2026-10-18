@@ -15,6 +15,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, join } from "node:path";
+import { createHash } from "node:crypto";
 import {
   KINDS,
   REQUIRED_KEYS,
@@ -217,6 +218,7 @@ function commitMemory(dir, meta, body) {
   appendAudit(dir, {
     action: "saved",
     id,
+    hash: contentHash(body),
     source_type: meta.source_type,
     source_ref: meta.source_ref,
     supersedes,
@@ -265,7 +267,7 @@ function queueForReview(dir, meta, body) {
     throw new StoreError(`"${id}" is already waiting for review. Accept or reject it first with "stashpad review".`);
   }
   writeFileSync(path, renderMemory(meta, body), { flag: "wx" });
-  appendAudit(dir, { action: "queued", id, source_type: meta.source_type, source_ref: meta.source_ref });
+  appendAudit(dir, { action: "queued", id, hash: contentHash(body), source_type: meta.source_type, source_ref: meta.source_ref });
   return path;
 }
 
@@ -349,6 +351,38 @@ function applyForget(dir, id, path) {
   writeAtomic(filePath(dir, request.target), renderMemory({ ...meta, valid_to: todayIso() }, body));
   rmSync(path);
   appendAudit(dir, { action: "forgotten", id, target: request.target, reason: request.reason });
+}
+
+// Short fingerprint of a memory's text, kept in the audit log, so a later change to a file by hand
+// can be spotted ("stashpad doctor") without storing anything extra in the memory itself.
+export function contentHash(body) {
+  return createHash("sha256").update(body.trim()).digest("hex").slice(0, 16);
+}
+
+// A person says a memory is still true. Only last_confirmed_at changes.
+function confirmMemoryUnlocked(dir, id, today = todayIso()) {
+  const { text } = readMemory(dir, id);
+  const { meta, body } = parseMemory(text);
+  if (!isCurrent(meta, today)) {
+    throw new StoreError(`"${id}" is not current, so it cannot be confirmed. Save a new memory instead.`);
+  }
+  if (meta.last_confirmed_at === today) return { id, changed: false };
+  autoSnapshot(dir);
+  writeAtomic(filePath(dir, id), renderMemory({ ...meta, last_confirmed_at: today }, body));
+  appendAudit(dir, { action: "confirmed", id, hash: contentHash(body) });
+  return { id, changed: true };
+}
+
+// Memories from agents, tools or the web that nobody confirmed for a long time. Never changed here;
+// a person decides with confirm or forget.
+export function staleMemories(dir, { days = 180, today = todayIso() } = {}) {
+  const cutoff = new Date(`${today}T00:00:00Z`);
+  cutoff.setUTCDate(cutoff.getUTCDate() - days);
+  const limit = cutoff.toISOString().slice(0, 10);
+  return readAll(dir)
+    .entries.filter((e) => e.meta.source_type !== "user" && isCurrent(e.meta, today) && e.meta.last_confirmed_at < limit)
+    .map((e) => ({ id: e.id, last_confirmed_at: e.meta.last_confirmed_at }))
+    .sort((a, b) => a.last_confirmed_at.localeCompare(b.last_confirmed_at));
 }
 
 // Every valid memory with its full text, for export. Files that break the format go to skipped.
@@ -661,4 +695,5 @@ export function searchMemories(dir, query, options = {}) {
 export const saveMemory = (dir, ...args) => withStoreLock(dir, () => saveMemoryUnlocked(dir, ...args));
 export const queueForget = (dir, ...args) => withStoreLock(dir, () => queueForgetUnlocked(dir, ...args));
 export const acceptPending = (dir, ...args) => withStoreLock(dir, () => acceptPendingUnlocked(dir, ...args));
+export const confirmMemory = (dir, ...args) => withStoreLock(dir, () => confirmMemoryUnlocked(dir, ...args));
 export const rejectPending = (dir, ...args) => withStoreLock(dir, () => rejectPendingUnlocked(dir, ...args));

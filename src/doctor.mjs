@@ -7,7 +7,8 @@ import { validateDocuments } from "./memory-format.mjs";
 import { handleMessage, TOOLS } from "./mcp.mjs";
 import { MARKER, isInsideInstall, listSnapshots, readStoreFormat } from "./safety.mjs";
 import { loadStoreSynonyms } from "./synonyms.mjs";
-import { saveMemory } from "./store.mjs";
+import { contentHash, saveMemory, staleMemories } from "./store.mjs";
+import { parseMemory } from "./memory-format.mjs";
 import { STORE_FORMAT, VERSION } from "./version.mjs";
 
 const ok = (name, detail) => ({ name, status: "ok", detail });
@@ -92,6 +93,16 @@ function checkStore(dir) {
   const pending = join(dir, "pending");
   const waiting = existsSync(pending) ? readdirSync(pending).length : 0;
   if (waiting > 0) checks.push(warn("review queue", `${waiting} write(s) waiting for review`, 'Run "stashpad review", then accept or reject.'));
+  if (problems.length === 0) {
+    const edited = editedByHand(dir, files);
+    if (edited.length > 0) {
+      checks.push(warn("edited by hand", `${edited.length} memory file(s) changed outside Stashpad since they were saved: ${edited.slice(0, 3).join(", ")}`, "Fine if you edited them yourself. If not, compare with a snapshot (stashpad snapshots)."));
+    }
+    const stale = staleMemories(dir);
+    if (stale.length > 0) {
+      checks.push(warn("not confirmed", `${stale.length} memory/memories from agents, tools or the web not confirmed in 180 days, oldest: ${stale.slice(0, 3).map((s) => s.id).join(", ")}`, 'Check each one: "stashpad confirm <id>" if still true, "stashpad forget <id>" if not.'));
+    }
+  }
   const synonyms = loadStoreSynonyms(dir);
   if (synonyms.problem !== null) {
     checks.push(warn("synonyms", synonyms.problem, "Fix or delete synonyms.json. Search works without it."));
@@ -101,6 +112,25 @@ function checkStore(dir) {
     checks.push(warn("location", "the store is inside the Stashpad folder", "Set STASHPAD_DIR to a folder outside it, so an update cannot replace your memories."));
   }
   return checks;
+}
+
+// Compares each file's text with the last fingerprint the audit log holds for it.
+function editedByHand(dir, files) {
+  const path = join(dir, "audit.jsonl");
+  if (!existsSync(path)) return [];
+  const last = new Map();
+  for (const line of readFileSync(path, "utf8").split("\n")) {
+    if (line.trim() === "") continue;
+    try {
+      const entry = JSON.parse(line);
+      if (typeof entry.hash === "string" && ["saved", "confirmed"].includes(entry.action)) last.set(entry.id, entry.hash);
+    } catch {
+      // a broken audit line is not this check's business
+    }
+  }
+  return files
+    .filter((f) => last.has(f.name.slice(0, -3)) && last.get(f.name.slice(0, -3)) !== contentHash(parseMemory(f.text).body))
+    .map((f) => f.name.slice(0, -3));
 }
 
 export function runDoctor(dir, { nodeVersion = process.version } = {}) {

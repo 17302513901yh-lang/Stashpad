@@ -25,6 +25,7 @@ import { openInBrowser, startUi } from "./ui.mjs";
 import {
   StoreError,
   acceptPending,
+  confirmMemory,
   historyOf,
   listMemories,
   listPending,
@@ -45,6 +46,7 @@ export const USAGE = `Usage:
   stashpad search <words...> [--limit N] [--all] [filters] [--explain] [--json]
       filters: --kind decision,preference  --source-type user,agent  --as-of YYYY-MM-DD (what was valid that day)
                --since YYYY-MM-DD  --until YYYY-MM-DD (on valid_from)
+  stashpad confirm <id>                   say a memory is still true (updates last_confirmed_at)
   stashpad forget <id> --reason "<why>"   ask for a memory to end (a person accepts it)
   stashpad review [--json]
   stashpad accept <id>
@@ -565,6 +567,12 @@ export async function run(argv, io = defaultIo()) {
       case "get":
         if (!id) return usageError(io, "get needs an id, for example: stashpad get db-choice");
         return cmdGet(io, dir, id, values);
+      case "confirm": {
+        if (!id) return usageError(io, "confirm needs an id, for example: stashpad confirm db-choice");
+        const done = confirmMemory(dir, id);
+        io.stdout(done.changed ? `Confirmed ${id} as still true today.` : `${id} was already confirmed today.`);
+        return 0;
+      }
       case "forget":
         if (!id) return usageError(io, 'forget needs an id, for example: stashpad forget db-choice --reason "outdated"');
         return cmdForget(io, dir, id, values);
