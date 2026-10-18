@@ -7,29 +7,37 @@ export const CLIENTS = ["generic", "claude-code", "vscode", "codex", "agents-md"
 
 const binPath = () => resolve(fileURLToPath(new URL("../bin/stashpad.mjs", import.meta.url)));
 
-export function setupText(client, { dir = null } = {}) {
-  const bin = binPath();
+// How to start the server. Run through npx, the install path is a temporary cache that can vanish,
+// so the settings then say "npx -y stashpad mcp" instead of a file path.
+function launcher(bin) {
+  if (/[\\/]_npx[\\/]/.test(bin)) return { command: "npx", args: ["-y", "stashpad", "mcp"] };
+  return { command: "node", args: [bin, "mcp"] };
+}
+
+export function setupText(client, { dir = null, bin: binOverride = null } = {}) {
+  const bin = binOverride ?? binPath();
+  const run = launcher(bin);
   const env = dir === null ? null : { STASHPAD_DIR: resolve(dir) };
   switch (client) {
     case "generic": {
-      const server = { command: "node", args: [bin, "mcp"], ...(env ? { env } : {}) };
+      const server = { ...run, ...(env ? { env } : {}) };
       return [
         "Most MCP clients (Claude Desktop, Cursor, Windsurf, Gemini CLI and others) take this block in their MCP settings file:",
         JSON.stringify({ mcpServers: { stashpad: server } }, null, 2),
       ].join("\n");
     }
     case "claude-code":
-      return `claude mcp add stashpad${env ? ` -e STASHPAD_DIR="${env.STASHPAD_DIR}"` : ""} -- node "${bin}" mcp`;
+      return `claude mcp add stashpad${env ? ` -e STASHPAD_DIR="${env.STASHPAD_DIR}"` : ""} -- ${[run.command, ...run.args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(" ")}`;
     case "vscode": {
-      const server = { type: "stdio", command: "node", args: [bin, "mcp"], ...(env ? { env } : {}) };
+      const server = { type: "stdio", ...run, ...(env ? { env } : {}) };
       return ["Put this in .vscode/mcp.json:", JSON.stringify({ servers: { stashpad: server } }, null, 2)].join("\n");
     }
     case "codex":
       return [
         "Add this to ~/.codex/config.toml:",
         "[mcp_servers.stashpad]",
-        'command = "node"',
-        `args = [${JSON.stringify(bin)}, "mcp"]`,
+        `command = ${JSON.stringify(run.command)}`,
+        `args = [${run.args.map((a) => JSON.stringify(a)).join(", ")}]`,
         ...(env ? ["[mcp_servers.stashpad.env]", `STASHPAD_DIR = ${JSON.stringify(env.STASHPAD_DIR)}`] : []),
       ].join("\n");
     case "agents-md":

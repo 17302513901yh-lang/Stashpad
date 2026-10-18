@@ -50,3 +50,10 @@ test("setup prints settings for each client and rejects unknown ones", async () 
   const bad = { stdout: () => {}, stderr: (s) => err.push(s), env: {}, cwd: root, readStdin: async () => "" };
   assert.equal(await run(["setup", "nonsense"], bad), 2);
 });
+
+test("setup run through npx points at npx, not at a temporary cache path", async () => {
+  const { setupText } = await import("../src/setup.mjs");
+  const text = setupText("generic", { bin: "/home/u/.npm/_npx/abc/node_modules/stashpad/bin/stashpad.mjs" });
+  assert.deepEqual(JSON.parse(text.slice(text.indexOf("{"))).mcpServers.stashpad, { command: "npx", args: ["-y", "stashpad", "mcp"] });
+  assert.match(setupText("claude-code", { bin: "C:\\Users\\x\\AppData\\npm-cache\\_npx\\1\\node_modules\\stashpad\\bin\\stashpad.mjs" }), /-- npx -y stashpad mcp$/);
+});
