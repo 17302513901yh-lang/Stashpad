@@ -61,16 +61,18 @@ export function bm25Rank(docs, query, { synonyms = null, synonymWeight = 0.5 } =
     for (const token of tokens) frequencies.set(token, (frequencies.get(token) ?? 0) + 1);
 
     let score = 0;
+    const matched = [];
     for (const [term, weight] of weights) {
       const frequency = frequencies.get(term) ?? 0;
       if (frequency === 0) continue;
+      matched.push(weight === 1 ? term : `${term} (synonym)`);
       const df = documentFrequency.get(term);
       const idf = Math.log(1 + (count - df + 0.5) / (df + 0.5));
       const lengthNorm = 1 - B + (B * tokens.length) / avgLength;
       score += (weight * idf * frequency * (K1 + 1)) / (frequency + K1 * lengthNorm);
     }
 
-    if (score > 0) results.push({ id: doc.id, score });
+    if (score > 0) results.push({ id: doc.id, score, matched });
   });
 
   return results.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));

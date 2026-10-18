@@ -16,6 +16,7 @@ import {
 } from "node:fs";
 import { basename, join } from "node:path";
 import {
+  KINDS,
   REQUIRED_KEYS,
   TRUST_BY_SOURCE,
   isValidId,
@@ -588,18 +589,48 @@ function summarize(entry) {
 }
 
 // Current memories only, unless includeEnded is true.
-export function listMemories(dir, { includeEnded = false, today = todayIso() } = {}) {
+export function listMemories(dir, options = {}) {
   const { entries, skipped } = readAll(dir);
-  const rows = entries
-    .filter((entry) => includeEnded || isCurrent(entry.meta, today))
-    .map(summarize);
+  const rows = filterEntries(entries, options).map(summarize);
   return { rows, skipped };
 }
 
 // Ranks memories against the query. total is how many memories were searched.
-export function searchMemories(dir, query, { includeEnded = false, limit = 10, today = todayIso() } = {}) {
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+// Filters shared by list and search. Every filter is optional; together they must all hold (AND).
+//   kinds: ["decision", ...]   sourceTypes: ["user", ...]
+//   asOf: "YYYY-MM-DD"  what was valid on that day (ended memories included when they were valid then)
+//   since / until: "YYYY-MM-DD" on valid_from
+function filterEntries(entries, { includeEnded = false, today = todayIso(), kinds = null, sourceTypes = null, asOf = null, since = null, until = null } = {}) {
+  for (const [name, value] of [["as-of", asOf], ["since", since], ["until", until]]) {
+    if (value !== null && value !== undefined && !DAY.test(value)) {
+      throw new StoreError(`--${name} must be a date like 2026-10-01, not "${value}".`);
+    }
+  }
+  if (kinds) {
+    const bad = kinds.filter((k) => !KINDS.includes(k));
+    if (bad.length > 0) throw new StoreError(`unknown kind "${bad[0]}". Use one of: ${KINDS.join(", ")}.`);
+  }
+  if (sourceTypes) {
+    const bad = sourceTypes.filter((t) => !(t in TRUST_BY_SOURCE));
+    if (bad.length > 0) throw new StoreError(`unknown source type "${bad[0]}". Use one of: ${Object.keys(TRUST_BY_SOURCE).join(", ")}.`);
+  }
+  const day = asOf ?? today;
+  return entries.filter(
+    (entry) =>
+      (includeEnded || isCurrent(entry.meta, day)) &&
+      (!kinds || kinds.includes(entry.meta.kind)) &&
+      (!sourceTypes || sourceTypes.includes(entry.meta.source_type)) &&
+      (!since || entry.meta.valid_from >= since) &&
+      (!until || entry.meta.valid_from <= until),
+  );
+}
+
+export function searchMemories(dir, query, options = {}) {
+  const { limit = 10, explain = false } = options;
   const { entries, skipped } = readAll(dir);
-  const searched = entries.filter((entry) => includeEnded || isCurrent(entry.meta, today));
+  const searched = filterEntries(entries, options);
   const docs = searched.map((entry) => ({
     id: entry.id,
     text: `${entry.id.replace(/-/g, " ")} ${entry.body}`,
@@ -610,6 +641,7 @@ export function searchMemories(dir, query, { includeEnded = false, limit = 10, t
   const results = ranked.map((hit) => ({
     ...summarize(byId.get(hit.id)),
     score: Math.round(hit.score * 100) / 100,
+    ...(explain ? { matched: hit.matched, source_type: byId.get(hit.id).meta.source_type } : {}),
   }));
   return { total: searched.length, results, skipped };
 }

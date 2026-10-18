@@ -41,8 +41,10 @@ export const USAGE = `Usage:
   stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD] [--supersedes <old-id>]
   stashpad get <id> [--json]
   stashpad history <id> [--json]
-  stashpad list [--all] [--json]
-  stashpad search <words...> [--limit N] [--all] [--json]
+  stashpad list [--all] [filters] [--json]
+  stashpad search <words...> [--limit N] [--all] [filters] [--explain] [--json]
+      filters: --kind decision,preference  --source-type user,agent  --as-of YYYY-MM-DD (what was valid that day)
+               --since YYYY-MM-DD  --until YYYY-MM-DD (on valid_from)
   stashpad forget <id> --reason "<why>"   ask for a memory to end (a person accepts it)
   stashpad review [--json]
   stashpad accept <id>
@@ -106,6 +108,10 @@ const OPTIONS = {
   label: { type: "string" },
   "dry-run": { type: "boolean" },
   "max-chars": { type: "string" },
+  "as-of": { type: "string" },
+  since: { type: "string" },
+  until: { type: "string" },
+  explain: { type: "boolean" },
   yes: { type: "boolean" },
   version: { type: "boolean", short: "v" },
   help: { type: "boolean", short: "h" },
@@ -328,8 +334,21 @@ function cmdHistory(io, dir, id, values) {
   return 0;
 }
 
+const csv = (value) => (value === undefined ? null : value.split(",").map((v) => v.trim()).filter(Boolean));
+
+function filtersFrom(values) {
+  return {
+    includeEnded: values.all === true,
+    kinds: csv(values.kind),
+    sourceTypes: csv(values["source-type"]),
+    asOf: values["as-of"] ?? null,
+    since: values.since ?? null,
+    until: values.until ?? null,
+  };
+}
+
 function cmdList(io, dir, values) {
-  const { rows, skipped } = listMemories(dir, { includeEnded: values.all === true });
+  const { rows, skipped } = listMemories(dir, filtersFrom(values));
 
   for (const item of skipped) {
     io.stderr(`skipped ${item.file}: ${item.reason}`);
@@ -361,8 +380,9 @@ function cmdSearch(io, dir, query, values) {
   }
 
   const { total, results, skipped } = searchMemories(dir, text, {
-    includeEnded: values.all === true,
+    ...filtersFrom(values),
     limit,
+    explain: values.explain === true,
   });
   for (const item of skipped) {
     io.stderr(`skipped ${item.file}: ${item.reason}`);
@@ -378,6 +398,7 @@ function cmdSearch(io, dir, query, values) {
   }
   for (const row of results) {
     io.stdout(`${row.score}  ${row.id}  ${row.kind}  ${row.summary}`);
+    if (row.matched) io.stdout(`      matched: ${row.matched.join(", ")}  source: ${row.source_type}  valid ${row.valid_from} to ${row.valid_to ?? "now"}`);
   }
   return 0;
 }

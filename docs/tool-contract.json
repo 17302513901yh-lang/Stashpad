@@ -6,6 +6,8 @@
         "query"
       ],
       "arguments": [
+        "as_of",
+        "kind",
         "limit",
         "query"
       ]
@@ -54,5 +56,5 @@
       ]
     }
   ],
-  "hash": "b0c7fc58cbc4a403b25dd003d8e65d63c1a05e5950f28512013483b1d78a7f39"
+  "hash": "345cf21a1843166029140418debc1f32913e2374d423cfa6e418f03c6476e0f4"
 }

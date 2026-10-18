@@ -7,7 +7,7 @@ and a person decides what is kept. Read this once, then use the table below.
 
 | You want to | Use | What happens |
 |---|---|---|
-| find earlier facts | `stashpad_search` | ranked, current memories with ids |
+| find earlier facts | `stashpad_search` | ranked, current memories with ids; optional `kind` and `as_of` (what was valid on a date) |
 | read one memory | `stashpad_get` | text, source, dates, trust |
 | see what is new | `stashpad_recent` | current memories, newest first |
 | keep a new fact | `stashpad_save` | queued for a person to accept |

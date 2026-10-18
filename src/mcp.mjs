@@ -26,6 +26,8 @@ export const TOOLS = [
       properties: {
         query: { type: "string", description: "Words to look for, for example 'database choice'." },
         limit: { type: "integer", minimum: 1, maximum: 20, description: "Most results to return (default 10)." },
+        kind: { type: "string", enum: KINDS, description: "Only this kind." },
+        as_of: { type: "string", description: "Date YYYY-MM-DD: search what was valid on that day." },
       },
       required: ["query"],
     },
@@ -106,7 +108,11 @@ function callTool(name, args, dir) {
       case "stashpad_search": {
         requireArgs(name, args, ["query"]);
         const limit = clampLimit(args.limit, 10, 20);
-        const { total, results } = searchMemories(dir, String(args.query), { limit });
+        const { total, results } = searchMemories(dir, String(args.query), {
+          limit,
+          kinds: args.kind ? [String(args.kind)] : null,
+          asOf: args.as_of ? String(args.as_of) : null,
+        });
         return jsonResult({ label: DATA_LABEL, searched: total, results });
       }
       case "stashpad_get": {
