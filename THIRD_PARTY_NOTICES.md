@@ -23,3 +23,14 @@ Rules:
 4. Keep the original copyright header in each copied file and add a short note that it was modified.
 5. For Apache-2.0 projects, also carry over the upstream `NOTICE` content if the project has one.
 6. Where a package exists, use it as a dependency instead of copying its code.
+
+## Ideas, not code
+
+These projects were studied for design ideas. No code was copied from them; the Stashpad versions are written from scratch.
+
+| Project | License | Idea used in Stashpad |
+|---|---|---|
+| mem0 (https://github.com/mem0ai/mem0) | Apache-2.0 | content hash per change in the history, search filters, telling the caller what a save may replace |
+| MCP reference memory server (https://github.com/modelcontextprotocol/servers) | MIT / Apache-2.0 | a lock file that breaks when stale, so several processes can write safely; tool hints for read-only tools |
+| cognee (https://github.com/topoteretes/cognee) | Apache-2.0 | a person confirming a memory keeps it fresh; old unconfirmed memories are flagged for review |
+

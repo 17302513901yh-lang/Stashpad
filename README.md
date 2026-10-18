@@ -45,7 +45,11 @@ stashpad save db-choice --kind decision --source-type user --source-ref "stateme
 stashpad search "sqlite" --json
 stashpad save db-choice-v2 --kind decision --source-type user --source-ref "later statement" --text "We keep data in Postgres." --supersedes db-choice
 stashpad history db-choice-v2
+stashpad search database --kind decision --as-of 2026-03-01 --explain   # what was decided on that day, and why it matched
+stashpad confirm db-choice-v2      # still true; doctor flags agent memories nobody confirmed for 180 days
 ```
+
+The command line, the MCP server and the review page can run at the same time: every write takes a short lock on the store.
 
 Writes from agents, tools and the web wait in review:
 
@@ -107,6 +111,7 @@ Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `sou
 ## Docs
 
 - [Search words and synonyms](docs/FORMAT.md#search-words-and-synonyms)
+- [Architecture](docs/ARCHITECTURE.md)
 - [Use with any agent](docs/ANY-AGENT.md)
 - [Updating safely: snapshots, restore, migrate](docs/UPDATING.md)
 - [Memory file format](docs/FORMAT.md)
