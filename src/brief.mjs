@@ -4,6 +4,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
 import { isCurrent, listPending, readEntries, todayIso } from "./store.mjs";
+import { openHandoffSummary } from "./handoff.mjs";
 
 export const DEFAULT_BRIEF_CHARS = 1500;
 const KIND_ORDER = ["preference", "decision", "task", "fact"];
@@ -47,7 +48,9 @@ export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayI
     waiting = 0;
   }
 
-  const head = `${DATA_LABEL}\nStashpad brief: ${current.length} current memories. Full text: stashpad get <id>, or search with stashpad search <words>.`;
+  const headBase = `${DATA_LABEL}\nStashpad brief: ${current.length} current memories. Full text: stashpad get <id>, or search with stashpad search <words>.`;
+  const handoff = openHandoffSummary(dir);
+  const head = handoff ? `${headBase}\nOpen handoff${handoff.count > 1 ? `s: ${handoff.count}, first` : ''}${handoff.first.from ? ` from ${handoff.first.from}` : ''}: take it once with stashpad handoff claim (or stashpad_handoff action claim).` : headBase;
   const tailParts = [];
   if (waiting > 0) tailParts.push(`${waiting} waiting for a person to review (not shown).`);
   if (heldBack > 0) tailParts.push(`${heldBack} held back because they read like instructions; a person should check them.`);
@@ -67,7 +70,7 @@ export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayI
   if (more > 0) tailParts.unshift(`${more} more not shown; search for them.`);
 
   const text = [head, ...lines, ...tailParts].join("\n");
-  return { text, shown, omitted: more, waiting, held_back: heldBack, total: current.length };
+  return { text, shown, omitted: more, waiting, held_back: heldBack, total: current.length, open_handoffs: handoff?.count ?? 0 };
 }
 
 const START = "<!-- stashpad:start -->";

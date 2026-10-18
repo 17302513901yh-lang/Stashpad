@@ -24,11 +24,11 @@ export const MARKER = ".stashpad-store.json";
 export const SNAPSHOTS = ".snapshots";
 const AUTO_KEEP = 14;
 const SNAPSHOT_NAME = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[a-z0-9-]+$/;
-const SUBFOLDERS = ["pending", "rejected"];
+const SUBFOLDERS = ["pending", "rejected", "handoffs"];
 
 // Files in the top of a store that a snapshot keeps. Raw source copies in sources/ never change,
 // so snapshots leave them out.
-const isTopLevelData = (name) => name.endsWith(".md") || name === "audit.jsonl" || name === "synonyms.json" || name === MARKER;
+const isTopLevelData = (name) => name.endsWith(".md") || name === "audit.jsonl" || name === "feedback.jsonl" || name === "synonyms.json" || name === MARKER;
 
 function isRegularFile(path) {
   return existsSync(path) && lstatSync(path).isFile();

@@ -63,7 +63,31 @@
         "id",
         "reason"
       ]
+    },
+    {
+      "name": "stashpad_handoff",
+      "required": [
+        "action"
+      ],
+      "arguments": [
+        "action",
+        "from",
+        "id",
+        "text"
+      ]
+    },
+    {
+      "name": "stashpad_feedback",
+      "required": [
+        "id",
+        "signal"
+      ],
+      "arguments": [
+        "id",
+        "note",
+        "signal"
+      ]
     }
   ],
-  "hash": "5dc5183e1d98cbada79a8009b0fb8fce3988c8b330f99806829c07c657f03fbb"
+  "hash": "044bad883141e30e993e51ad79bac3da4a689405351e15633a89178df44157e3"
 }

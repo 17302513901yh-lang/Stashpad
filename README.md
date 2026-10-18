@@ -50,6 +50,10 @@ stashpad search database --kind decision --as-of 2026-03-01 --explain   # what w
 stashpad entities                  # names, tools and files the memories talk about
 stashpad about Postgres            # every memory about it, and what is mentioned with it
 stashpad confirm db-choice-v2      # still true; doctor flags agent memories nobody confirmed for 180 days
+stashpad handoff leave --text "Half done: auth. Next: tests."   # a note the next session reads once
+stashpad handoff claim             # take it (a person's notes first); listing never takes one
+stashpad feedback db-choice --signal stale   # helpful, stale or wrong; wrong also asks for it to end
+stashpad lint                      # what deserves a look; changes nothing
 ```
 
 The command line, the MCP server and the review page can run at the same time: every write takes a short lock on the store.
@@ -76,7 +80,7 @@ stashpad audit
 }
 ```
 
-Six tools: `stashpad_search`, `stashpad_get`, `stashpad_recent`, `stashpad_about`, `stashpad_save`, `stashpad_forget`.
+Eight tools: `stashpad_search`, `stashpad_get`, `stashpad_recent`, `stashpad_about`, `stashpad_save`, `stashpad_forget`, `stashpad_handoff`, `stashpad_feedback`.
 
 ## Check it, import into it
 
@@ -114,6 +118,7 @@ Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `sou
 ## Docs
 
 - [Search words and synonyms](docs/FORMAT.md#search-words-and-synonyms)
+- [Handoffs, feedback, lint, expiry and ReversePort](docs/HANDOFFS.md)
 - [Optional encryption](docs/ENCRYPTION.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Use with any agent](docs/ANY-AGENT.md)

@@ -41,8 +41,10 @@ import {
   todayIso,
 } from "./store.mjs";
 
+import { cancelHandoff, claimHandoff, createHandoff, listHandoffs } from "./handoff.mjs";
+import { giveFeedback, lint } from "./feedback.mjs";
 export const USAGE = `Usage:
-  stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD] [--supersedes <old-id>]
+  stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD] [--expires YYYY-MM-DD] [--supersedes <old-id>]
   stashpad get <id> [--json]
   stashpad history <id> [--json]
   stashpad list [--all] [filters] [--json]
@@ -60,12 +62,18 @@ export const USAGE = `Usage:
   stashpad import <file> [--format jsonl|text] [--source-ref "<source>"]   queue memories from an export
   stashpad export [--all] [--out <file>]   write memories as JSON Lines (current only; --all adds ended ones)
   stashpad eval [--json]       run the fixed checks and baselines in a temporary store
-  stashpad mcp                 serve the six agent tools over stdio (for MCP clients)
+  stashpad mcp                 serve the eight agent tools over stdio (for MCP clients)
   stashpad ui [--port N] [--open]   review waiting memories in a page on this computer (Ctrl+C stops it)
   stashpad setup [generic|claude-code|vscode|codex|agents-md]   print the settings that connect an agent to Stashpad
   stashpad doctor [--json]             check that Stashpad and the store are healthy, with a fix for each problem
   stashpad brief [--max-chars N] [--json]   short plain-text summary for the start of a session (any agent can read it)
   stashpad handover --text "<what the next session needs>" [--source-type user|agent]   leave a note for the next session
+  stashpad handoff leave --text "<where I stopped, what is next>" [--from <agent>] [--auto] [--expires-days N]
+  stashpad handoff list [--all] [--json]   open handoffs (listing never takes one)
+  stashpad handoff claim [<id>] [--by <agent>] [--json]   take one handoff, exactly once (a person's notes first)
+  stashpad handoff cancel <id> [--reason "<why>"]
+  stashpad feedback <id> --signal helpful|stale|wrong [--note "<why>"]   wrong also asks for the memory to end
+  stashpad lint [--json]               memories worth a look: marked stale/wrong, unconfirmed, expiring, broken links
   stashpad sync-agents [<file>]        put the brief into AGENTS.md (or another file) between markers; other text is kept
   stashpad encrypt                     optional: seal the whole store (needs STASHPAD_PASSPHRASE or STASHPAD_KEY_FILE)
   stashpad decrypt [--yes]             turn an encrypted store back into plain files
@@ -117,6 +125,13 @@ const OPTIONS = {
   label: { type: "string" },
   "dry-run": { type: "boolean" },
   "max-chars": { type: "string" },
+  expires: { type: "string" },
+  "expires-days": { type: "string" },
+  auto: { type: "boolean" },
+  from: { type: "string" },
+  by: { type: "string" },
+  signal: { type: "string" },
+  note: { type: "string" },
   "as-of": { type: "string" },
   since: { type: "string" },
   until: { type: "string" },
@@ -169,6 +184,7 @@ async function cmdSave(io, dir, id, values) {
     sourceType: values["source-type"],
     sourceRef,
     validFrom: values["valid-from"],
+    validTo: values.expires ?? null,
     supersedes: values.supersedes ?? null,
   });
 
@@ -541,6 +557,63 @@ function cmdContract(io, values) {
   return 0;
 }
 
+async function cmdHandoff(io, dir, [action, id], values) {
+  if (action === "leave") {
+    if (values.text === undefined) return usageError(io, 'handoff leave needs --text, for example: stashpad handoff leave --text "Parser half done; next: tests."');
+    const text = values.text === "-" ? await io.readStdin() : values.text;
+    const days = values["expires-days"] === undefined ? undefined : Number(values["expires-days"]);
+    const r = createHandoff(dir, { text, origin: values.auto ? "auto" : "manual", from: values.from ?? null, ...(days === undefined ? {} : { expiresDays: days }) });
+    if (values.json) io.stdout(JSON.stringify(r));
+    else io.stdout(`Left handoff ${r.id} (${r.origin}, expires ${r.expires_at.slice(0, 10)}). The next session takes it with: stashpad handoff claim${r.replaced.length ? `\nIt replaces ${r.replaced.join(", ")}.` : ""}`);
+    return 0;
+  }
+  if (action === "list") {
+    const r = listHandoffs(dir, { all: values.all === true });
+    if (values.json) io.stdout(JSON.stringify(r));
+    else if (r.handoffs.length === 0) io.stdout(values.all ? "No handoffs." : "No open handoffs.");
+    else for (const h of r.handoffs) io.stdout(`${h.id}  ${h.state}  ${h.origin}${h.from ? ` from ${h.from}` : ""}  ${h.preview}`);
+    return 0;
+  }
+  if (action === "claim") {
+    const r = claimHandoff(dir, { id: id ?? null, by: values.by ?? null });
+    if (values.json) io.stdout(JSON.stringify(r));
+    else if (!r.claimed) io.stdout(r.reason);
+    else {
+      io.stdout(`# ${r.label}`);
+      io.stdout(`Handoff ${r.id} (${r.origin}${r.from ? ` from ${r.from}` : ""}, ${r.created_at.slice(0, 16).replace("T", " ")} UTC)${r.flagged ? ` [check: ${r.flagged}]` : ""}:`);
+      io.stdout(r.text);
+      if (r.others_open > 0) io.stdout(`${r.others_open} more open: stashpad handoff list`);
+    }
+    return 0;
+  }
+  if (action === "cancel") {
+    if (!id) return usageError(io, "handoff cancel needs an id. See them with: stashpad handoff list");
+    const r = cancelHandoff(dir, id, { reason: values.reason ?? null });
+    io.stdout(values.json ? JSON.stringify(r) : `Cancelled ${r.id}.`);
+    return 0;
+  }
+  return usageError(io, "handoff needs leave, list, claim or cancel.");
+}
+
+function cmdFeedback(io, dir, id, values) {
+  if (values.signal === undefined) return usageError(io, "feedback needs --signal helpful, stale or wrong.");
+  const r = giveFeedback(dir, id, { signal: values.signal, note: values.note ?? null, by: values.by ?? null });
+  if (values.json) io.stdout(JSON.stringify(r));
+  else io.stdout(`Noted: ${id} is ${r.signal}.${r.forget_request && !r.forget_request.error ? " An ending request waits in review." : ""}${r.forget_request?.error ? ` (No ending request: ${r.forget_request.error})` : ""}`);
+  return 0;
+}
+
+function cmdLint(io, dir, values) {
+  const r = lint(dir);
+  if (values.json) io.stdout(JSON.stringify(r));
+  else if (r.findings.length === 0) io.stdout(`Nothing to look at among ${r.checked} memories.`);
+  else {
+    io.stdout(`${r.findings.length} finding(s) among ${r.checked} memories:`);
+    for (const f of r.findings) io.stdout(`  ${f.rule}  ${f.id}: ${f.message}`);
+  }
+  return 0;
+}
+
 export async function run(argv, io = defaultIo()) {
   let parsed;
   try {
@@ -627,6 +700,13 @@ export async function run(argv, io = defaultIo()) {
         return cmdBrief(io, dir, values);
       case "handover":
         return await cmdHandover(io, dir, values);
+      case "handoff":
+        return await cmdHandoff(io, dir, positionals.slice(1), values);
+      case "feedback":
+        if (!id) return usageError(io, "feedback needs an id, for example: stashpad feedback db-choice --signal stale");
+        return cmdFeedback(io, dir, id, values);
+      case "lint":
+        return cmdLint(io, dir, values);
       case "sync-agents":
         return cmdSyncAgents(io, dir, id);
       case "encrypt": {
