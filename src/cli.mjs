@@ -9,6 +9,15 @@ import { importMemories } from "./importer.mjs";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { exportMemories } from "./export.mjs";
 import { archiveSource } from "./sources.mjs";
+import { contractOf } from "./contract.mjs";
+import { VERSION, STORE_FORMAT } from "./version.mjs";
+import {
+  createSnapshot,
+  isInsideInstall,
+  listSnapshots,
+  migrateStore,
+  restoreSnapshot,
+} from "./safety.mjs";
 import { openInBrowser, startUi } from "./ui.mjs";
 import {
   StoreError,
@@ -40,6 +49,12 @@ export const USAGE = `Usage:
   stashpad eval [--json]       run the fixed checks and baselines in a temporary store
   stashpad mcp                 serve the five agent tools over stdio (for MCP clients)
   stashpad ui [--port N] [--open]   review waiting memories in a page on this computer (Ctrl+C stops it)
+  stashpad snapshot [--label <name>]   copy the store to <store>/.snapshots/ (an automatic one is taken daily before edits)
+  stashpad snapshots [--json]          list snapshots
+  stashpad restore <snapshot> [--yes]  put a snapshot back (without --yes it only shows what would happen)
+  stashpad migrate [--dry-run]         bring the store to the current format (snapshot first)
+  stashpad contract [--json]           show the agent tool contract and its hash
+  stashpad --version                   show the version
 
 Notes:
   A save with --source-type user goes straight into the store.
@@ -55,6 +70,10 @@ Options:
   --limit N           most results to show for search (default 10)
   --all               include memories that have ended
   --json              print machine-readable output
+  --label <name>      name part of a snapshot
+  --dry-run           show what would change, change nothing
+  --yes               confirm a restore
+  --version, -v       show the version
   --help              show this help
 
 Exit codes: 0 ok, 1 the memory or store has a problem, 2 wrong command or options.`;
@@ -75,6 +94,10 @@ const OPTIONS = {
   all: { type: "boolean" },
   json: { type: "boolean" },
   dir: { type: "string" },
+  label: { type: "string" },
+  "dry-run": { type: "boolean" },
+  yes: { type: "boolean" },
+  version: { type: "boolean", short: "v" },
   help: { type: "boolean", short: "h" },
 };
 
@@ -349,6 +372,60 @@ function cmdSearch(io, dir, query, values) {
   return 0;
 }
 
+function cmdSnapshot(io, dir, values) {
+  const made = createSnapshot(dir, values.label ?? "manual");
+  io.stdout(`Snapshot ${made.name} (${made.files} files). Put it back with: stashpad restore ${made.name} --yes`);
+  return 0;
+}
+
+function cmdSnapshots(io, dir, values) {
+  const names = listSnapshots(dir);
+  if (values.json) {
+    io.stdout(JSON.stringify(names));
+    return 0;
+  }
+  if (names.length === 0) io.stdout("No snapshots yet. Make one with: stashpad snapshot");
+  for (const name of names) io.stdout(name);
+  return 0;
+}
+
+function cmdRestore(io, dir, name, values) {
+  if (values.yes !== true) {
+    io.stdout(`Would put snapshot ${name} back into ${dir}. The current state is snapshotted first, so this can be undone.`);
+    io.stdout("Nothing changed. Run again with --yes to do it.");
+    return 0;
+  }
+  const done = restoreSnapshot(dir, name);
+  io.stdout(`Restored ${done.restored} (${done.files} files). Undo with: stashpad restore ${done.safety} --yes`);
+  return 0;
+}
+
+function cmdMigrate(io, dir, values) {
+  const result = migrateStore(dir, { dryRun: values["dry-run"] === true });
+  if (values.json) {
+    io.stdout(JSON.stringify(result));
+    return result.problems.length > 0 ? 1 : 0;
+  }
+  io.stdout(`Store format ${result.from} -> ${result.to}${result.dry_run ? " (dry run, nothing written)" : ""}`);
+  if (result.steps.length === 0) io.stdout("Already up to date.");
+  for (const step of result.steps) io.stdout(`  ${result.dry_run ? "would" : "did"}: ${step}`);
+  if (result.snapshot) io.stdout(`Snapshot before the change: ${result.snapshot}`);
+  for (const problem of result.problems) io.stderr(`problem: ${problem}`);
+  return result.problems.length > 0 ? 1 : 0;
+}
+
+function cmdContract(io, values) {
+  const contract = contractOf();
+  if (values.json) {
+    io.stdout(JSON.stringify({ version: VERSION, store_format: STORE_FORMAT, ...contract }, null, 2));
+    return 0;
+  }
+  io.stdout(`Stashpad ${VERSION}, store format ${STORE_FORMAT}`);
+  for (const tool of contract.tools) io.stdout(`${tool.name}(${tool.arguments.join(", ")})  required: ${tool.required.join(", ")}`);
+  io.stdout(`hash ${contract.hash}`);
+  return 0;
+}
+
 export async function run(argv, io = defaultIo()) {
   let parsed;
   try {
@@ -358,6 +435,10 @@ export async function run(argv, io = defaultIo()) {
   }
 
   const { values, positionals } = parsed;
+  if (values.version) {
+    io.stdout(`stashpad ${VERSION}`);
+    return 0;
+  }
   if (values.help) {
     io.stdout(USAGE);
     return 0;
@@ -387,7 +468,21 @@ export async function run(argv, io = defaultIo()) {
       case "import":
         if (!id) return usageError(io, "import needs a file, for example: stashpad import notes.jsonl");
         return cmdImport(io, dir, id, values);
+      case "snapshot":
+        return cmdSnapshot(io, dir, values);
+      case "snapshots":
+        return cmdSnapshots(io, dir, values);
+      case "restore":
+        if (!id) return usageError(io, "restore needs a snapshot name. See them with: stashpad snapshots");
+        return cmdRestore(io, dir, id, values);
+      case "migrate":
+        return cmdMigrate(io, dir, values);
+      case "contract":
+        return cmdContract(io, values);
       case "mcp":
+        if (isInsideInstall(dir)) {
+          io.stderr(`warning: the store (${dir}) is inside the Stashpad install folder. An update may replace it. Set STASHPAD_DIR to a folder outside it.`);
+        }
         await serveMcp({ dir, input: process.stdin, output: process.stdout });
         return 0;
       case "review":

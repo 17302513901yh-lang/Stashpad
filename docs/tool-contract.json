@@ -1,0 +1,58 @@
+{
+  "tools": [
+    {
+      "name": "stashpad_search",
+      "required": [
+        "query"
+      ],
+      "arguments": [
+        "limit",
+        "query"
+      ]
+    },
+    {
+      "name": "stashpad_get",
+      "required": [
+        "id"
+      ],
+      "arguments": [
+        "id"
+      ]
+    },
+    {
+      "name": "stashpad_recent",
+      "required": [],
+      "arguments": [
+        "limit"
+      ]
+    },
+    {
+      "name": "stashpad_save",
+      "required": [
+        "id",
+        "kind",
+        "source_ref",
+        "text"
+      ],
+      "arguments": [
+        "id",
+        "kind",
+        "source_ref",
+        "supersedes",
+        "text"
+      ]
+    },
+    {
+      "name": "stashpad_forget",
+      "required": [
+        "id",
+        "reason"
+      ],
+      "arguments": [
+        "id",
+        "reason"
+      ]
+    }
+  ],
+  "hash": "b0c7fc58cbc4a403b25dd003d8e65d63c1a05e5950f28512013483b1d78a7f39"
+}

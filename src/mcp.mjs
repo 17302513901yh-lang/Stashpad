@@ -2,6 +2,7 @@
 // Agents only get five tools. Anything an agent writes waits for a person to accept it.
 import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
 import { parseMemory } from "./memory-format.mjs";
+import { VERSION } from "./version.mjs";
 import {
   StoreError,
   listMemories,
@@ -12,7 +13,7 @@ import {
 } from "./store.mjs";
 
 const PROTOCOL_VERSION = "2024-11-05";
-const SERVER_INFO = { name: "stashpad", version: "0.1.0" };
+const SERVER_INFO = { name: "stashpad", version: VERSION };
 const KINDS = ["fact", "preference", "decision", "task"];
 
 export const TOOLS = [

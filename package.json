@@ -16,7 +16,8 @@
     "bench": "node scripts/bench-search.mjs",
     "test": "node --test",
     "validate-memory": "node scripts/validate-memory.mjs",
-    "port": "node scripts/port-file.mjs"
+    "port": "node scripts/port-file.mjs",
+    "contract": "node scripts/update-contract.mjs"
   },
   "files": [
     "bin",

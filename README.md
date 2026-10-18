@@ -92,6 +92,7 @@ Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `sou
 
 ## Docs
 
+- [Updating safely: snapshots, restore, migrate](docs/UPDATING.md)
 - [Memory file format](docs/FORMAT.md)
 - [Search backend decision](docs/decisions/search-backend.md)
 - [No vector search for now](docs/decisions/vectors.md)

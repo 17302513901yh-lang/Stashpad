@@ -27,7 +27,10 @@ import { applyTemporalInvalidation } from "../third_party/graphiti/temporal.mjs"
 import { findInstructionLikeText, findSecrets } from "./security.mjs";
 import { lstatSync } from "node:fs";
 
-export class StoreError extends Error {}
+import { StoreError } from "./errors.mjs";
+import { autoSnapshot, prepareForWrite } from "./safety.mjs";
+
+export { StoreError };
 
 // Refuses to read or write through a symbolic link: a link could point outside the store.
 function assertSafeFile(path) {
@@ -182,6 +185,8 @@ function commitMemory(dir, meta, body) {
       `memory "${id}" already exists. Pick a new id. A changed fact gets a new memory, not an edit.`,
     );
   }
+  // Ending the old memory edits a file in place, so take the daily snapshot first.
+  if (old !== null) autoSnapshot(dir);
   writeFileSync(path, renderMemory(meta, body), { flag: "wx" });
 
   if (old !== null) {
@@ -225,6 +230,7 @@ function queueForReview(dir, meta, body) {
 // User memories go straight into the store. Anything from an agent, tool or the web is queued.
 export function saveMemory(dir, input, today = todayIso()) {
   const { meta, body } = buildMemory(input, today);
+  prepareForWrite(dir);
   if (meta.source_type !== "user") {
     return { status: "queued", path: queueForReview(dir, meta, body) };
   }
@@ -264,6 +270,7 @@ export function queueForget(dir, target, reason, sourceRef = "agent request", so
       `not requested: the reason looks like a secret (${secrets.join(", ")}). Remove it. Reasons must not hold keys or passwords.`,
     );
   }
+  prepareForWrite(dir);
   const folder = join(dir, PENDING);
   mkdirSync(folder, { recursive: true });
   const id = `forget-${target}`;
@@ -285,6 +292,7 @@ function applyForget(dir, id, path) {
   if (meta.valid_to !== null) {
     throw new StoreError(`"${request.target}" already ended on ${meta.valid_to}.`);
   }
+  autoSnapshot(dir);
   writeAtomic(filePath(dir, request.target), renderMemory({ ...meta, valid_to: todayIso() }, body));
   rmSync(path);
   appendAudit(dir, { action: "forgotten", id, target: request.target, reason: request.reason });
@@ -411,6 +419,7 @@ export function listPending(dir) {
 // Accepts a waiting write (or ending request). If the store check fails, it stays in pending/.
 export function acceptPending(dir, id) {
   const path = pendingPath(dir, id);
+  prepareForWrite(dir);
   if (path.endsWith(".json")) {
     applyForget(dir, id, path);
     return path;
@@ -434,6 +443,7 @@ export function rejectPending(dir, id, reason = null) {
   if (reason !== null && findSecrets(reason).length > 0) {
     throw new StoreError("not rejected: the reason looks like a secret. Remove it and try again.");
   }
+  prepareForWrite(dir);
   const folder = join(dir, REJECTED);
   mkdirSync(folder, { recursive: true });
   const to = uniquePath(folder, basename(from));
