@@ -5,7 +5,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, renameSync, rmSync, w
 import { join } from "node:path";
 import { StoreError } from "./errors.mjs";
 import { withStoreLock } from "./lock.mjs";
-import { MARKER, SNAPSHOTS, assertWritable, readStoreFormat, writeMarker } from "./safety.mjs";
+import { MARKER, SNAPSHOTS, assertWritable, hasSealedFiles, readStoreFormat, writeMarker } from "./safety.mjs";
 import { STORE_FORMAT } from "./version.mjs";
 import {
   encryptionOf,
@@ -97,6 +97,11 @@ export function encryptStore(dir, env = process.env) {
     const passphrase = passphraseFromEnv(env);
     if (!passphrase) throw new StoreError("set STASHPAD_PASSPHRASE or STASHPAD_KEY_FILE first. Keep that passphrase safe: without it the memories cannot be read.");
     const resumed = encryptionOf(dir) !== null;
+    if (!resumed && hasSealedFiles(dir)) {
+      throw new StoreError(
+        'this store already holds sealed files, but its marker has no encryption settings. Run "stashpad migrate" to put the marker back first; a new key would make the sealed files unreadable.',
+      );
+    }
     if (!resumed) writeMarker(dir, readStoreFormat(dir) ?? STORE_FORMAT, { encryption: newEncryption(passphrase) });
     const key = keyFor(dir, { STASHPAD_PASSPHRASE: passphrase });
     const files = convert(dir, key, true);
@@ -122,7 +127,7 @@ export function decryptStore(dir, env = process.env) {
 export function plainFilesInEncryptedStore(dir) {
   if (encryptionOf(dir) === null) return 0;
   let count = 0;
-  for (const { path, kind } of dataFiles(dir)) {
+  for (const { path, kind } of allRoots(dir).flatMap((root) => dataFiles(root))) {
     if (kind === "lines") {
       if (readFileSync(path, "utf8").split("\n").some((l) => l.trim() !== "" && !l.startsWith("SEALED1:"))) count += 1;
     } else if (!readFileSync(path).subarray(0, 18).toString("utf8").startsWith("STASHPAD-SEALED-1:")) count += 1;

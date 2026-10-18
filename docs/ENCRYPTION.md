@@ -9,7 +9,7 @@ export STASHPAD_PASSPHRASE="a long passphrase you will not forget"   # or: expor
 stashpad encrypt
 ```
 
-Every command, the MCP server, the review page and the session brief keep working as before, as long as the same passphrase is set. Without it, or with a wrong one, Stashpad stops with one clear message and changes nothing.
+Every command, the MCP server, the review page and the session brief keep working as before, as long as the same passphrase is set. Without it, or with a wrong one, every command stops with one clear message before it changes anything.
 
 **If you lose the passphrase, the memories are gone.** There is no reset and no back door.
 
@@ -19,7 +19,7 @@ Every command, the MCP server, the review page and the session brief keep workin
 - every line of the audit log
 - every snapshot (they are converted too, so no plain copy stays behind)
 
-Sealing uses AES-256-GCM from Node itself; the key comes from the passphrase with scrypt and a random salt kept in `.stashpad-store.json`. A changed or damaged sealed file is detected and refused, not silently read.
+Sealing uses AES-256-GCM from Node itself (16-byte tags, a fresh random IV per file and per audit line); the key comes from the passphrase with scrypt (N=2^17, r=8, p=1) and a random salt kept in `.stashpad-store.json`, with a second copy in `.stashpad-store.backup.json`. Opening an encrypted store takes about half a second once per run. A changed or damaged sealed file is detected and refused, not silently read.
 
 ## What is not sealed
 
@@ -27,6 +27,10 @@ Sealing uses AES-256-GCM from Node itself; the key comes from the passphrase wit
 - `.stashpad-store.json` (format, salt and a check value; no key) and `synonyms.json`
 - names of source copies made before encryption was turned on (new copies get a random-looking name)
 - anything Stashpad prints or writes out on purpose: `export`, `brief`, `sync-agents` (AGENTS.md is plain text)
+
+## If the marker is damaged
+
+The marker holds the salt; without it the key cannot be made again. Never delete it by hand in an encrypted store. Run `stashpad migrate`: it puts the marker back from its backup, or from the newest snapshot. `stashpad encrypt` refuses to make a new key while sealed files exist, so the old files cannot be locked out by accident. `stashpad doctor` says which of these applies.
 
 ## Turn it off
 

@@ -41,6 +41,7 @@ test("a store made before markers stays unmarked until migrate", () => {
   const dir = fresh();
   save(dir, "old");
   rmSync(join(dir, MARKER));
+  rmSync(join(dir, ".stashpad-store.backup.json"), { force: true }); // a store from before markers has neither
   save(dir, "newer", "Another fact about builds.");
   assert.equal(readStoreFormat(dir), null);
 });
@@ -50,6 +51,7 @@ test("migrate dry run changes nothing; a real run writes the marker and a snapsh
   save(dir, "a");
   // make it look like a legacy store
   rmSync(join(dir, MARKER));
+  rmSync(join(dir, ".stashpad-store.backup.json"), { force: true }); // a store from before markers has neither
   const dry = migrateStore(dir, { dryRun: true });
   assert.equal(dry.from, 0);
   assert.equal(dry.snapshot, null);

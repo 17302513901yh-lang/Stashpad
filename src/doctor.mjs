@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { validateDocuments } from "./memory-format.mjs";
 import { handleMessage, TOOLS } from "./mcp.mjs";
-import { MARKER, isInsideInstall, listSnapshots, readStoreFormat } from "./safety.mjs";
+import { MARKER, hasSealedFiles, isInsideInstall, listSnapshots, markerRescue, readStoreFormat } from "./safety.mjs";
 import { loadStoreSynonyms } from "./synonyms.mjs";
 import { contentHash, saveMemory, staleMemories } from "./store.mjs";
 import { parseMemory } from "./memory-format.mjs";
@@ -77,6 +77,17 @@ function checkStore(dir) {
     checks.push(fail("format", error.message, `Restore from a snapshot ("stashpad snapshots"), or remove ${MARKER} and run "stashpad migrate".`));
   }
 
+  if (encryptionOf(dir) === null && hasSealedFiles(dir)) {
+    const rescue = markerRescue(dir);
+    checks.push(
+      fail(
+        "encryption",
+        "the store holds sealed files but its marker has no encryption settings",
+        rescue ? `Run "stashpad migrate": it puts the marker back from ${rescue.from}.` : "Find .stashpad-store.json in a backup of this folder and put it back. Do not run encrypt: a new key would lock the old files for good.",
+      ),
+    );
+    return checks;
+  }
   if (encryptionOf(dir) !== null) {
     try {
       keyFor(dir);
@@ -96,9 +107,13 @@ function checkStore(dir) {
   if (links.length > 0) {
     checks.push(warn("links", `${links.length} memory file(s) are links and are skipped: ${links.slice(0, 3).join(", ")}`, "Replace each link with a real file, or delete it."));
   }
-  const files = names
-    .filter((name) => !links.includes(name))
-    .map((name) => ({ name, text: readData(dir, join(dir, name)) }));
+  let files;
+  try {
+    files = names.filter((name) => !links.includes(name)).map((name) => ({ name, text: readData(dir, join(dir, name)) }));
+  } catch (error) {
+    checks.push(fail("memories", `the memory files cannot be opened: ${error.message}`, 'Check the passphrase, or run "stashpad migrate" if the marker was damaged.'));
+    return checks;
+  }
   const problems = validateDocuments(files);
   checks.push(
     problems.length === 0

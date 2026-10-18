@@ -157,3 +157,86 @@ test("restoring a snapshot taken before encryption keeps the store encrypted and
   assert.equal(searchMemories(dir, SECRET_WORD).results[0].id, "plan");
   for (const file of allFiles(dir)) assert.ok(!readFileSync(file, "utf8").includes(SECRET_WORD), `plain text in ${file}`);
 });
+
+// Fixes from an independent review.
+import { rmSync, existsSync } from "node:fs";
+import { migrateStore } from "../src/safety.mjs";
+import { rejectPending } from "../src/store.mjs";
+
+test("review 1: a deleted or broken marker is put back by migrate; encrypt never makes a new key over sealed files", () => {
+  const dir = store();
+  encryptStore(dir);
+  writeFileSync(join(dir, ".stashpad-store.json"), "{broken");
+  assert.equal(runDoctor(dir).healthy, false);
+  rmSync(join(dir, ".stashpad-store.json"));
+  assert.throws(() => encryptStore(dir), /already holds sealed files/);
+  const fixed = migrateStore(dir);
+  assert.match(fixed.steps[0], /put the marker back/);
+  assert.equal(searchMemories(dir, SECRET_WORD).results[0].id, "plan");
+});
+
+test("review 1b: without the marker and its backup, the newest snapshot's marker is used", () => {
+  const dir = store();
+  encryptStore(dir);
+  createSnapshot(dir, "with-marker");
+  rmSync(join(dir, ".stashpad-store.json"));
+  rmSync(join(dir, ".stashpad-store.backup.json"));
+  migrateStore(dir);
+  assert.equal(searchMemories(dir, SECRET_WORD).results[0].id, "plan");
+});
+
+test("review 2: restore refuses while the marker is missing, and says what to do", () => {
+  const dir = store();
+  encryptStore(dir);
+  const [snap] = listSnapshots(dir);
+  rmSync(join(dir, ".stashpad-store.json"));
+  assert.throws(() => restoreSnapshot(dir, snap), /migrate/);
+  assert.ok(!readFileSync(join(dir, "audit.jsonl"), "utf8").split("\n").some((l) => l.startsWith("{")), "no plain audit line");
+});
+
+test("review 3: a write without the passphrase changes nothing", () => {
+  const dir = store();
+  encryptStore(dir);
+  delete process.env.STASHPAD_PASSPHRASE;
+  assert.throws(() => rejectPending(dir, "idea", "no"), /encrypted/);
+  assert.ok(existsSync(join(dir, "pending", "idea.md")));
+  assert.ok(!existsSync(join(dir, "rejected")));
+});
+
+test("review 4: doctor counts plain files in snapshots too", () => {
+  const dir = store();
+  encryptStore(dir);
+  const [snap] = listSnapshots(dir);
+  writeFileSync(join(dir, ".snapshots", snap, "plain.md"), "---\nid: plain\n---\nplain text");
+  assert.equal(runDoctor(dir).checks.find((c) => c.name === "encryption").status, "warn");
+});
+
+test("review 5 and 6: a damaged or cut-short sealed value is refused with a clear error", () => {
+  const dir = store();
+  encryptStore(dir);
+  const file = join(dir, "plan.md");
+  const sealed = readFileSync(file, "utf8");
+  const raw = Buffer.from(sealed.slice("STASHPAD-SEALED-1:".length), "base64");
+  writeFileSync(file, `STASHPAD-SEALED-1:${raw.subarray(0, 16).toString("base64")}`);
+  assert.throws(() => readMemory(dir, "plan"), StoreError);
+  writeFileSync(file, "STASHPAD-SEALED-1:");
+  assert.throws(() => readMemory(dir, "plan"), StoreError);
+});
+
+test("review 7: doctor reports sealed files without encryption settings instead of crashing", () => {
+  const dir = store();
+  encryptStore(dir);
+  writeFileSync(join(dir, ".stashpad-store.json"), JSON.stringify({ format: 1 }));
+  const check = runDoctor(dir).checks.find((c) => c.name === "encryption");
+  assert.equal(check.status, "fail");
+  assert.match(check.fix, /migrate|backup/);
+});
+
+test("review 7b: a marker that lost its encryption settings is fixed by migrate from the backup", () => {
+  const dir = store();
+  encryptStore(dir);
+  writeFileSync(join(dir, ".stashpad-store.json"), JSON.stringify({ format: 1 }));
+  assert.match(runDoctor(dir).checks.find((c) => c.name === "encryption").fix, /backup/);
+  migrateStore(dir);
+  assert.equal(searchMemories(dir, SECRET_WORD).results[0].id, "plan");
+});

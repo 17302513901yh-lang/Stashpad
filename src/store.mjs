@@ -32,7 +32,7 @@ import { lstatSync } from "node:fs";
 
 import { StoreError } from "./errors.mjs";
 import { withStoreLock } from "./lock.mjs";
-import { openLine, readData, sealFor, sealLine } from "./vault.mjs";
+import { keyFor, openLine, readData, sealFor, sealLine } from "./vault.mjs";
 import { gateReason, relatedTo } from "./gate.mjs";
 import { autoSnapshot, prepareForWrite } from "./safety.mjs";
 
@@ -693,8 +693,8 @@ export function searchMemories(dir, query, options = {}) {
 }
 
 // Public write functions: each runs while holding the store lock.
-export const saveMemory = (dir, ...args) => withStoreLock(dir, () => saveMemoryUnlocked(dir, ...args));
-export const queueForget = (dir, ...args) => withStoreLock(dir, () => queueForgetUnlocked(dir, ...args));
-export const acceptPending = (dir, ...args) => withStoreLock(dir, () => acceptPendingUnlocked(dir, ...args));
-export const confirmMemory = (dir, ...args) => withStoreLock(dir, () => confirmMemoryUnlocked(dir, ...args));
-export const rejectPending = (dir, ...args) => withStoreLock(dir, () => rejectPendingUnlocked(dir, ...args));
+export const saveMemory = (dir, ...args) => withStoreLock(dir, () => (keyFor(dir), saveMemoryUnlocked(dir, ...args)));
+export const queueForget = (dir, ...args) => withStoreLock(dir, () => (keyFor(dir), queueForgetUnlocked(dir, ...args)));
+export const acceptPending = (dir, ...args) => withStoreLock(dir, () => (keyFor(dir), acceptPendingUnlocked(dir, ...args)));
+export const confirmMemory = (dir, ...args) => withStoreLock(dir, () => (keyFor(dir), confirmMemoryUnlocked(dir, ...args)));
+export const rejectPending = (dir, ...args) => withStoreLock(dir, () => (keyFor(dir), rejectPendingUnlocked(dir, ...args)));

@@ -5,16 +5,21 @@
 // by STASHPAD_KEY_FILE. The passphrase itself is never written anywhere.
 // Reading accepts both sealed and plain content, so a conversion that stops halfway loses nothing:
 // running the command again finishes it.
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { StoreError } from "./errors.mjs";
 
 export const SEAL_PREFIX = "STASHPAD-SEALED-1:";
+export const MARKER_BACKUP = ".stashpad-store.backup.json";
+const NO_MARKER =
+  'this store holds sealed files but its marker has no encryption settings. Run "stashpad doctor": it says how to put the marker back from its backup or a snapshot. Do not delete or recreate the marker by hand.';
 const LINE_PREFIX = "SEALED1:";
 const MARKER = ".stashpad-store.json";
 const CHECK_TEXT = "stashpad key check";
-const KDF = { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
+// scrypt cost for new stores (OWASP advice: N=2^17, r=8, p=1). Each store keeps its own settings.
+const KDF = { N: 2 ** 17, r: 8, p: 1 };
+const MAXMEM = 512 * 1024 * 1024;
 const keys = new Map(); // salt -> key, so scrypt runs once per process
 
 export function encryptionOf(dir) {
@@ -39,12 +44,21 @@ export function passphraseFromEnv(env = process.env) {
   return env.STASHPAD_PASSPHRASE ?? null;
 }
 
-function deriveKey(passphrase, saltB64) {
-  const cached = keys.get(`${saltB64}\u0000${passphrase}`);
+function deriveKey(passphrase, saltB64, params = KDF) {
+  const N = params.N ?? params.n ?? KDF.N;
+  const r = params.r ?? KDF.r;
+  const p = params.p ?? KDF.p;
+  const id = `${saltB64}\u0000${N}\u0000${r}\u0000${p}\u0000${passphrase}`;
+  const cached = keys.get(id);
   if (cached) return cached;
-  const key = scryptSync(passphrase, Buffer.from(saltB64, "base64"), 32, KDF);
-  keys.set(`${saltB64}\u0000${passphrase}`, key);
+  const key = scryptSync(passphrase, Buffer.from(saltB64, "base64"), 32, { N, r, p, maxmem: MAXMEM });
+  keys.set(id, key);
   return key;
+}
+
+// A second key for naming source copies, so the sealing key is used for one job only.
+export function namingKey(key) {
+  return Buffer.from(hkdfSync("sha256", key, Buffer.alloc(0), "stashpad source names", 32));
 }
 
 function sealBytes(key, bytes) {
@@ -56,9 +70,10 @@ function sealBytes(key, bytes) {
 
 function openBytes(key, b64) {
   const raw = Buffer.from(b64, "base64");
-  const decipher = createDecipheriv("aes-256-gcm", key, raw.subarray(0, 12));
-  decipher.setAuthTag(raw.subarray(12, 28));
   try {
+    if (raw.length < 28) throw new Error("too short");
+    const decipher = createDecipheriv("aes-256-gcm", key, raw.subarray(0, 12), { authTagLength: 16 });
+    decipher.setAuthTag(raw.subarray(12, 28));
     return Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]);
   } catch {
     throw new StoreError("a sealed file could not be opened: the passphrase is wrong or the file was changed.");
@@ -84,7 +99,7 @@ export function keyFor(dir, env = process.env) {
   if (!passphrase) {
     throw new StoreError("this store is encrypted. Set STASHPAD_PASSPHRASE (or STASHPAD_KEY_FILE) to open it.");
   }
-  const key = deriveKey(passphrase, enc.salt);
+  const key = deriveKey(passphrase, enc.salt, enc);
   let ok = false;
   try {
     ok = timingSafeEqual(openBytes(key, enc.check), Buffer.from(CHECK_TEXT));
@@ -102,7 +117,7 @@ export function openText(dir, content) {
   const text = Buffer.isBuffer(content) ? content.toString("utf8") : content;
   if (!isSealed(text)) return text;
   const key = keyFor(dir);
-  if (key === null) throw new StoreError("this file is sealed but the store is not marked as encrypted. Restore the marker from a snapshot.");
+  if (key === null) throw new StoreError(NO_MARKER);
   return openBytes(key, text.slice(SEAL_PREFIX.length)).toString("utf8");
 }
 
@@ -110,7 +125,7 @@ export function openRaw(dir, buffer) {
   const head = buffer.subarray(0, SEAL_PREFIX.length).toString("utf8");
   if (head !== SEAL_PREFIX) return buffer;
   const key = keyFor(dir);
-  if (key === null) throw new StoreError("this file is sealed but the store is not marked as encrypted.");
+  if (key === null) throw new StoreError(NO_MARKER);
   return openBytes(key, buffer.subarray(SEAL_PREFIX.length).toString("utf8"));
 }
 
@@ -133,7 +148,7 @@ export function sealLine(dir, line, key = keyFor(dir)) {
 export function openLine(dir, line) {
   if (!line.startsWith(LINE_PREFIX)) return line;
   const key = keyFor(dir);
-  if (key === null) throw new StoreError("the audit log is sealed but the store is not marked as encrypted.");
+  if (key === null) throw new StoreError(NO_MARKER);
   return openBytes(key, line.slice(LINE_PREFIX.length)).toString("utf8");
 }
 

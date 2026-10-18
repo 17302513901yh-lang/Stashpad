@@ -39,6 +39,7 @@ test("a broken memory file, a missing marker and a too-new format are reported",
 
   rmSync(join(dir, "broken.md"));
   rmSync(join(dir, MARKER));
+  rmSync(join(dir, ".stashpad-store.backup.json"), { force: true }); // a store from before markers has neither
   assert.equal(byName(runDoctor(dir), "format").status, "warn");
 
   writeFileSync(join(dir, MARKER), JSON.stringify({ format: 99 }));
