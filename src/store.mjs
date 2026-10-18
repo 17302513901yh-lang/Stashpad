@@ -116,7 +116,7 @@ export function readAudit(dir, limit = 50) {
 
 // Builds and checks a new memory without writing anything.
 function buildMemory(input, today) {
-  const { id, kind, text, sourceType, sourceRef, validFrom, supersedes = null } = input;
+  const { id, kind, text, sourceType, sourceRef, validFrom, validTo = null, supersedes = null } = input;
 
   if (!isValidId(id)) {
     throw new StoreError(
@@ -152,7 +152,7 @@ function buildMemory(input, today) {
     kind,
     created_at: today,
     valid_from: validFrom ?? today,
-    valid_to: null,
+    valid_to: validTo ?? null,
     supersedes,
     superseded_by: null,
     source_type: sourceType,
@@ -161,6 +161,9 @@ function buildMemory(input, today) {
     last_confirmed_at: today,
   };
   const body = text.trim();
+  if (meta.valid_to !== null && /^\d{4}-\d{2}-\d{2}$/.test(meta.valid_to) && meta.valid_to <= meta.valid_from) {
+    throw new StoreError(`not saved: --expires ${meta.valid_to} must be after the start date ${meta.valid_from}.`);
+  }
 
   const { errors } = validateMemory(renderMemory(meta, body), id);
   if (errors.length > 0) {

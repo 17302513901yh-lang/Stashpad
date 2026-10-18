@@ -38,9 +38,9 @@ function dataFiles(root) {
   for (const name of readdirSync(root)) {
     const path = join(root, name);
     if (name.endsWith(".md") && isFile(path)) files.push({ path, kind: "file" });
-    if (name === "audit.jsonl" && isFile(path)) files.push({ path, kind: "lines" });
+    if ((name === "audit.jsonl" || name === "feedback.jsonl") && isFile(path)) files.push({ path, kind: "lines" });
   }
-  for (const sub of ["pending", "rejected", "sources"]) {
+  for (const sub of ["pending", "rejected", "sources", "handoffs"]) {
     const folder = join(root, sub);
     if (!isDir(folder)) continue;
     for (const name of readdirSync(folder)) {
