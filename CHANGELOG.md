@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- Published as `@laaielichter/stashpad` (the command is still `stashpad`).
+- `stashpad setup`, when run through npx, now points at `npx -y @laaielichter/stashpad mcp`. 0.2.0 pointed at the unscoped name, which is a different package.
+
 ## 0.2.0
 
 First public release.

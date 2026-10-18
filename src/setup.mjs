@@ -8,9 +8,9 @@ export const CLIENTS = ["generic", "claude-code", "vscode", "codex", "agents-md"
 const binPath = () => resolve(fileURLToPath(new URL("../bin/stashpad.mjs", import.meta.url)));
 
 // How to start the server. Run through npx, the install path is a temporary cache that can vanish,
-// so the settings then say "npx -y stashpad mcp" instead of a file path.
+// so the settings then say "npx -y @laaielichter/stashpad mcp" instead of a file path.
 function launcher(bin) {
-  if (/[\\/]_npx[\\/]/.test(bin)) return { command: "npx", args: ["-y", "stashpad", "mcp"] };
+  if (/[\\/]_npx[\\/]/.test(bin)) return { command: "npx", args: ["-y", "@laaielichter/stashpad", "mcp"] };
   return { command: "node", args: [bin, "mcp"] };
 }
 
