@@ -1,0 +1,11 @@
+{
+  "name": "stashpad",
+  "owner": { "name": "laaielichter" },
+  "plugins": [
+    {
+      "name": "stashpad",
+      "source": "./",
+      "description": "Local, readable memory for AI agents."
+    }
+  ]
+}

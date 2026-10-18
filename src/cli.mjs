@@ -10,6 +10,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { exportMemories } from "./export.mjs";
 import { archiveSource } from "./sources.mjs";
 import { buildBrief, DEFAULT_BRIEF_CHARS, HANDOVER_PREFIX, syncAgentsFile } from "./brief.mjs";
+import { CLIENTS, setupText } from "./setup.mjs";
 import { runDoctor } from "./doctor.mjs";
 import { contractOf } from "./contract.mjs";
 import { VERSION, STORE_FORMAT } from "./version.mjs";
@@ -52,6 +53,7 @@ export const USAGE = `Usage:
   stashpad eval [--json]       run the fixed checks and baselines in a temporary store
   stashpad mcp                 serve the five agent tools over stdio (for MCP clients)
   stashpad ui [--port N] [--open]   review waiting memories in a page on this computer (Ctrl+C stops it)
+  stashpad setup [generic|claude-code|vscode|codex|agents-md]   print the settings that connect an agent to Stashpad
   stashpad doctor [--json]             check that Stashpad and the store are healthy, with a fix for each problem
   stashpad brief [--max-chars N] [--json]   short plain-text summary for the start of a session (any agent can read it)
   stashpad handover --text "<what the next session needs>" [--source-type user|agent]   leave a note for the next session
@@ -380,6 +382,14 @@ function cmdSearch(io, dir, query, values) {
   return 0;
 }
 
+function cmdSetup(io, dir, client, values) {
+  const text = setupText(client ?? "generic", { dir: values.dir ?? io.env.STASHPAD_DIR ?? null });
+  if (text === null) return usageError(io, `Unknown client "${client}". Choose one of: ${CLIENTS.join(", ")}.`);
+  io.stdout(text);
+  io.stdout("Settings formats differ a little between clients; check yours if this does not load.");
+  return 0;
+}
+
 function cmdDoctor(io, dir, values) {
   const report = runDoctor(dir);
   if (values.json) {
@@ -538,6 +548,8 @@ export async function run(argv, io = defaultIo()) {
       case "import":
         if (!id) return usageError(io, "import needs a file, for example: stashpad import notes.jsonl");
         return cmdImport(io, dir, id, values);
+      case "setup":
+        return cmdSetup(io, dir, id, values);
       case "doctor":
         return cmdDoctor(io, dir, values);
       case "brief":

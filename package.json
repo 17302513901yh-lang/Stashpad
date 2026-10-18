@@ -20,6 +20,10 @@
     "contract": "node scripts/update-contract.mjs"
   },
   "files": [
+    ".claude-plugin",
+    ".mcp.json",
+    "hooks",
+    "commands",
     "bin",
     "src",
     "skills",

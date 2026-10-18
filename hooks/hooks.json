@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/stashpad.mjs\" brief --max-chars 1500 || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
