@@ -16,6 +16,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { StoreError } from "./errors.mjs";
 import { withStoreLock } from "./lock.mjs";
+import { readData, sealLine } from "./vault.mjs";
 import { validateDocuments } from "./memory-format.mjs";
 import { STORE_FORMAT, VERSION } from "./version.mjs";
 
@@ -45,7 +46,7 @@ function writeAtomic(path, content) {
 }
 
 function appendAudit(dir, entry) {
-  appendFileSync(join(dir, "audit.jsonl"), `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`);
+  appendFileSync(join(dir, "audit.jsonl"), `${sealLine(dir, JSON.stringify({ at: new Date().toISOString(), ...entry }))}\n`);
 }
 
 // The format number written in the store, or null when there is no marker (a store from before markers).
@@ -64,8 +65,17 @@ export function readStoreFormat(dir) {
   );
 }
 
-function writeMarker(dir, format) {
-  writeAtomic(join(dir, MARKER), `${JSON.stringify({ format, written_by: `stashpad ${VERSION}` }, null, 2)}\n`);
+// Keeps every other field of the marker (such as the encryption settings).
+export function writeMarker(dir, format, extra = {}) {
+  let current = {};
+  try {
+    if (isRegularFile(join(dir, MARKER))) current = JSON.parse(readFileSync(join(dir, MARKER), "utf8"));
+  } catch {
+    current = {};
+  }
+  const next = { ...current, format, written_by: `stashpad ${VERSION}`, ...extra };
+  for (const [key, value] of Object.entries(next)) if (value === undefined) delete next[key];
+  writeAtomic(join(dir, MARKER), `${JSON.stringify(next, null, 2)}\n`);
 }
 
 function hasMemories(dir) {
@@ -162,7 +172,8 @@ function restoreSnapshotUnlocked(dir, name, now = new Date()) {
   }
   for (const sub of SUBFOLDERS) rmSync(join(dir, sub), { recursive: true, force: true });
 
-  let files = copyFiles(source, dir, isTopLevelData);
+  // The marker is never taken from a snapshot: it holds the current format and encryption settings.
+  let files = copyFiles(source, dir, (name) => isTopLevelData(name) && name !== MARKER);
   for (const sub of SUBFOLDERS) {
     const folder = join(source, sub);
     if (existsSync(folder)) files += copyFiles(folder, join(dir, sub), () => true);
@@ -181,7 +192,7 @@ function migrateStoreUnlocked(dir, { dryRun = false, now = new Date() } = {}) {
 
   const files = readdirSync(dir)
     .filter((name) => name.endsWith(".md") && isRegularFile(join(dir, name)))
-    .map((name) => ({ name, text: readFileSync(join(dir, name), "utf8") }));
+    .map((name) => ({ name, text: readData(dir, join(dir, name)) }));
   const problems = validateDocuments(files).map((p) => `${p.file}: ${p.message}`);
 
   const steps = [];

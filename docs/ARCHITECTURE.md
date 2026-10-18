@@ -34,6 +34,7 @@ graph LR
 | `security.mjs` | Secret patterns, invisible characters, instruction-like text (English and Dutch), limits. |
 | `gate.mjs` | Refuses short and near-copy agent notes; names related notes a save may replace. |
 | `safety.mjs` | Store format marker, snapshots, restore, migrate, downgrade protection. |
+| `vault.mjs`, `encrypt.mjs` | Optional encryption at rest: seal and open store files; convert a whole store. |
 | `lock.mjs` | One writer at a time per store, across processes; stale locks are broken. |
 | `brief.mjs` | The short session brief and the `AGENTS.md` block. |
 | `doctor.mjs` | Setup and store checks with a fix per problem, plus a built-in round trip. |
@@ -63,3 +64,4 @@ graph LR
 - Agent, tool and web writes wait for a person. A person's own writes go straight in.
 - Everything returned to an agent is labelled as data, not instructions.
 - No network access, no model calls, no telemetry.
+- Encryption is optional and off by default; when on, every data file and snapshot is sealed.

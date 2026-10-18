@@ -9,6 +9,8 @@ import { MARKER, isInsideInstall, listSnapshots, readStoreFormat } from "./safet
 import { loadStoreSynonyms } from "./synonyms.mjs";
 import { contentHash, saveMemory, staleMemories } from "./store.mjs";
 import { parseMemory } from "./memory-format.mjs";
+import { encryptionOf, keyFor, openLine, readData } from "./vault.mjs";
+import { plainFilesInEncryptedStore } from "./encrypt.mjs";
 import { STORE_FORMAT, VERSION } from "./version.mjs";
 
 const ok = (name, detail) => ({ name, status: "ok", detail });
@@ -75,6 +77,20 @@ function checkStore(dir) {
     checks.push(fail("format", error.message, `Restore from a snapshot ("stashpad snapshots"), or remove ${MARKER} and run "stashpad migrate".`));
   }
 
+  if (encryptionOf(dir) !== null) {
+    try {
+      keyFor(dir);
+      const plain = plainFilesInEncryptedStore(dir);
+      checks.push(
+        plain === 0
+          ? ok("encryption", "on; every data file is sealed")
+          : warn("encryption", `on, but ${plain} file(s) are still plain text`, 'Run "stashpad encrypt" again to finish sealing them.'),
+      );
+    } catch (error) {
+      checks.push(fail("encryption", error.message, "Set STASHPAD_PASSPHRASE or STASHPAD_KEY_FILE to the passphrase used for this store."));
+      return checks;
+    }
+  }
   const names = readdirSync(dir).filter((name) => name.endsWith(".md"));
   const links = names.filter((name) => lstatSync(join(dir, name)).isSymbolicLink());
   if (links.length > 0) {
@@ -82,7 +98,7 @@ function checkStore(dir) {
   }
   const files = names
     .filter((name) => !links.includes(name))
-    .map((name) => ({ name, text: readFileSync(join(dir, name), "utf8") }));
+    .map((name) => ({ name, text: readData(dir, join(dir, name)) }));
   const problems = validateDocuments(files);
   checks.push(
     problems.length === 0
@@ -122,7 +138,7 @@ function editedByHand(dir, files) {
   for (const line of readFileSync(path, "utf8").split("\n")) {
     if (line.trim() === "") continue;
     try {
-      const entry = JSON.parse(line);
+      const entry = JSON.parse(openLine(dir, line));
       if (typeof entry.hash === "string" && ["saved", "confirmed"].includes(entry.action)) last.set(entry.id, entry.hash);
     } catch {
       // a broken audit line is not this check's business

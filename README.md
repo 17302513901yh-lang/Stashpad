@@ -7,6 +7,7 @@ Stashpad keeps what an agent learns as plain Markdown files. Every memory has a 
 - **Plain files.** Open them in any editor, diff them, keep them in git.
 - **Safe by default.** Agent and web writes wait in a review queue. Secrets are refused.
 - **Works with any agent.** Plain commands, an open MCP server and a plain `AGENTS.md` block. No model or company is required.
+- **Optional encryption.** `stashpad encrypt` seals every file with AES-256-GCM, snapshots included. Off by default.
 - **Nothing to install.** Node 20 or newer, no dependencies.
 
 ```bash
@@ -113,6 +114,7 @@ Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `sou
 ## Docs
 
 - [Search words and synonyms](docs/FORMAT.md#search-words-and-synonyms)
+- [Optional encryption](docs/ENCRYPTION.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Use with any agent](docs/ANY-AGENT.md)
 - [Updating safely: snapshots, restore, migrate](docs/UPDATING.md)

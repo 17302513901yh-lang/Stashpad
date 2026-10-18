@@ -32,6 +32,7 @@ import { lstatSync } from "node:fs";
 
 import { StoreError } from "./errors.mjs";
 import { withStoreLock } from "./lock.mjs";
+import { openLine, readData, sealFor, sealLine } from "./vault.mjs";
 import { gateReason, relatedTo } from "./gate.mjs";
 import { autoSnapshot, prepareForWrite } from "./safety.mjs";
 
@@ -102,15 +103,15 @@ function renderMemory(meta, body) {
 
 function appendAudit(dir, entry) {
   mkdirSync(dir, { recursive: true });
-  appendFileSync(join(dir, AUDIT), `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`);
+  appendFileSync(join(dir, AUDIT), `${sealLine(dir, JSON.stringify({ at: new Date().toISOString(), ...entry }))}\n`);
 }
 
 // Last `limit` audit entries, oldest first.
 export function readAudit(dir, limit = 50) {
   const path = join(dir, AUDIT);
   if (!existsSync(path)) return [];
-  const lines = readFileSync(path, "utf8").split("\n").filter((line) => line.trim() !== "");
-  return lines.slice(-limit).map((line) => JSON.parse(line));
+  const lines = readData(dir, path).split("\n").filter((line) => line.trim() !== "");
+  return lines.slice(-limit).map((line) => JSON.parse(openLine(dir, line)));
 }
 
 // Builds and checks a new memory without writing anything.
@@ -203,12 +204,12 @@ function commitMemory(dir, meta, body) {
   }
   // Ending the old memory edits a file in place, so take the daily snapshot first.
   if (old !== null) autoSnapshot(dir);
-  writeFileSync(path, renderMemory(meta, body), { flag: "wx" });
+  writeFileSync(path, sealFor(dir, renderMemory(meta, body)), { flag: "wx" });
 
   if (old !== null) {
     try {
       const ended = { ...old.meta, valid_to: meta.valid_from, superseded_by: id };
-      writeAtomic(filePath(dir, supersedes), renderMemory(ended, old.body));
+      writeAtomic(filePath(dir, supersedes), sealFor(dir, renderMemory(ended, old.body)));
     } catch (error) {
       rmSync(path, { force: true });
       throw error;
@@ -235,7 +236,7 @@ function comparableBodies(dir, pendingFolder, ownId) {
   for (const name of readdirSync(pendingFolder)) {
     if (!name.endsWith(".md")) continue;
     try {
-      list.push({ id: name.slice(0, -3), body: parseMemory(readFileSync(join(pendingFolder, name), "utf8")).body });
+      list.push({ id: name.slice(0, -3), body: parseMemory(readData(dir, join(pendingFolder, name))).body });
     } catch {
       // an unreadable waiting file is reported by review, not here
     }
@@ -266,7 +267,7 @@ function queueForReview(dir, meta, body) {
   if (existsSync(path)) {
     throw new StoreError(`"${id}" is already waiting for review. Accept or reject it first with "stashpad review".`);
   }
-  writeFileSync(path, renderMemory(meta, body), { flag: "wx" });
+  writeFileSync(path, sealFor(dir, renderMemory(meta, body)), { flag: "wx" });
   appendAudit(dir, { action: "queued", id, hash: contentHash(body), source_type: meta.source_type, source_ref: meta.source_ref });
   return path;
 }
@@ -335,20 +336,20 @@ function queueForgetUnlocked(dir, target, reason, sourceRef = "agent request", s
     throw new StoreError(`an ending request for "${target}" is already waiting for review.`);
   }
   const request = { action: "forget", target, reason, source_type: sourceType, source_ref: sourceRef };
-  writeFileSync(path, `${JSON.stringify(request, null, 2)}\n`, { flag: "wx" });
+  writeFileSync(path, sealFor(dir, `${JSON.stringify(request, null, 2)}\n`), { flag: "wx" });
   appendAudit(dir, { action: "queued", id, source_type: sourceType, source_ref: sourceRef, reason });
   return path;
 }
 
 function applyForget(dir, id, path) {
-  const request = JSON.parse(readFileSync(path, "utf8"));
+  const request = JSON.parse(readData(dir, path));
   const { text } = readMemory(dir, request.target);
   const { meta, body } = parseMemory(text);
   if (meta.valid_to !== null) {
     throw new StoreError(`"${request.target}" already ended on ${meta.valid_to}.`);
   }
   autoSnapshot(dir);
-  writeAtomic(filePath(dir, request.target), renderMemory({ ...meta, valid_to: todayIso() }, body));
+  writeAtomic(filePath(dir, request.target), sealFor(dir, renderMemory({ ...meta, valid_to: todayIso() }, body)));
   rmSync(path);
   appendAudit(dir, { action: "forgotten", id, target: request.target, reason: request.reason });
 }
@@ -368,7 +369,7 @@ function confirmMemoryUnlocked(dir, id, today = todayIso()) {
   }
   if (meta.last_confirmed_at === today) return { id, changed: false };
   autoSnapshot(dir);
-  writeAtomic(filePath(dir, id), renderMemory({ ...meta, last_confirmed_at: today }, body));
+  writeAtomic(filePath(dir, id), sealFor(dir, renderMemory({ ...meta, last_confirmed_at: today }, body)));
   appendAudit(dir, { action: "confirmed", id, hash: contentHash(body) });
   return { id, changed: true };
 }
@@ -394,7 +395,7 @@ export function readEntries(dir) {
 export function readPending(dir, id) {
   const path = pendingPath(dir, id);
   if (path.endsWith(".json")) {
-    const request = JSON.parse(readFileSync(path, "utf8"));
+    const request = JSON.parse(readData(dir, path));
     return {
       id,
       kind: "forget",
@@ -409,7 +410,7 @@ export function readPending(dir, id) {
     };
   }
   assertSafeFile(path);
-  const text = readFileSync(path, "utf8");
+  const text = readData(dir, path);
   const { meta, errors } = validateMemory(text, id);
   if (errors.length > 0) throw new StoreError(`"${id}" has a problem: ${errors[0]}`);
   const { body } = parseMemory(text);
@@ -465,7 +466,7 @@ export function listPending(dir) {
       skipped.push({ file: name, reason: "symbolic link: not read" });
       continue;
     }
-    const text = readFileSync(join(folder, name), "utf8");
+    const text = readData(dir, join(folder, name));
     const { meta, errors } = validateMemory(text, id);
     if (errors.length > 0) {
       skipped.push({ file: name, reason: errors[0] });
@@ -485,7 +486,7 @@ export function listPending(dir) {
   }
   for (const name of readdirSync(folder).filter((n) => n.startsWith("forget-") && n.endsWith(".json")).sort()) {
     try {
-      const request = JSON.parse(readFileSync(join(folder, name), "utf8"));
+      const request = JSON.parse(readData(dir, join(folder, name)));
       rows.push({
         id: name.slice(0, -".json".length),
         kind: "forget",
@@ -512,7 +513,7 @@ function acceptPendingUnlocked(dir, id) {
     return path;
   }
   assertSafeFile(path);
-  const text = readFileSync(path, "utf8");
+  const text = readData(dir, path);
   const { meta, errors } = validateMemory(text, id);
   if (errors.length > 0) {
     throw new StoreError(`"${id}" cannot be accepted, fix it first:\n- ${errors.join("\n- ")}`);
@@ -593,7 +594,7 @@ export function readMemory(dir, id) {
     throw new StoreError(`no memory named "${id}" in ${dir}. Run "stashpad list --all" to see what exists.`);
   }
   assertSafeFile(path);
-  return { path, text: readFileSync(path, "utf8") };
+  return { path, text: readData(dir, path) };
 }
 
 // Reads every valid memory in the store folder. Files that break the format go to skipped.
@@ -609,7 +610,7 @@ function readAll(dir) {
       skipped.push({ file: name, reason: "symbolic link: not read" });
       continue;
     }
-    const text = readFileSync(join(dir, name), "utf8");
+    const text = readData(dir, join(dir, name));
     const { errors } = validateMemory(text, id);
     if (errors.length > 0) {
       skipped.push({ file: name, reason: errors[0] });

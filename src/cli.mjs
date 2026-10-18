@@ -12,6 +12,8 @@ import { archiveSource } from "./sources.mjs";
 import { buildBrief, DEFAULT_BRIEF_CHARS, HANDOVER_PREFIX, isHandoverId, syncAgentsFile } from "./brief.mjs";
 import { CLIENTS, setupText } from "./setup.mjs";
 import { aboutEntity, listEntities } from "./entities.mjs";
+import { decryptStore, encryptStore } from "./encrypt.mjs";
+import { encryptionOf } from "./vault.mjs";
 import { runDoctor } from "./doctor.mjs";
 import { contractOf } from "./contract.mjs";
 import { VERSION, STORE_FORMAT } from "./version.mjs";
@@ -65,6 +67,8 @@ export const USAGE = `Usage:
   stashpad brief [--max-chars N] [--json]   short plain-text summary for the start of a session (any agent can read it)
   stashpad handover --text "<what the next session needs>" [--source-type user|agent]   leave a note for the next session
   stashpad sync-agents [<file>]        put the brief into AGENTS.md (or another file) between markers; other text is kept
+  stashpad encrypt                     optional: seal the whole store (needs STASHPAD_PASSPHRASE or STASHPAD_KEY_FILE)
+  stashpad decrypt [--yes]             turn an encrypted store back into plain files
   stashpad snapshot [--label <name>]   copy the store to <store>/.snapshots/ (an automatic one is taken daily before edits)
   stashpad snapshots [--json]          list snapshots
   stashpad restore <snapshot> [--yes]  put a snapshot back (without --yes it only shows what would happen)
@@ -268,6 +272,7 @@ async function cmdUi(io, dir, values) {
 }
 
 function cmdExport(io, dir, values) {
+  if (encryptionOf(dir) !== null) io.stderr("note: this store is encrypted; the export is plain text. Keep it somewhere safe.");
   const { text, count, skipped } = exportMemories(dir, { includeEnded: values.all === true });
   for (const item of skipped) io.stderr(`skipped ${item.file}: ${item.reason}`);
   if (values.out !== undefined) {
@@ -624,6 +629,21 @@ export async function run(argv, io = defaultIo()) {
         return await cmdHandover(io, dir, values);
       case "sync-agents":
         return cmdSyncAgents(io, dir, id);
+      case "encrypt": {
+        const done = encryptStore(dir, io.env);
+        io.stdout(`${done.resumed ? "Finished encrypting" : "Encrypted"} the store (${done.files} files sealed, snapshots included).`);
+        io.stdout("Keep the passphrase safe. Without it nobody can read these memories, not even you.");
+        return 0;
+      }
+      case "decrypt": {
+        if (values.yes !== true) {
+          io.stdout("Would turn every sealed file back into plain text, snapshots included. Nothing changed. Run again with --yes.");
+          return 0;
+        }
+        const done = decryptStore(dir, io.env);
+        io.stdout(`Decrypted the store (${done.files} files are plain text again).`);
+        return 0;
+      }
       case "snapshot":
         return cmdSnapshot(io, dir, values);
       case "snapshots":
