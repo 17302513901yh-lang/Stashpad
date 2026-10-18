@@ -6,6 +6,7 @@ Stashpad keeps what an agent learns as plain Markdown files. Every memory has a 
 
 - **Plain files.** Open them in any editor, diff them, keep them in git.
 - **Safe by default.** Agent and web writes wait in a review queue. Secrets are refused.
+- **Works with any agent.** Plain commands, an open MCP server and a plain `AGENTS.md` block. No model or company is required.
 - **Nothing to install.** Node 20 or newer, no dependencies.
 
 ```bash
@@ -15,6 +16,14 @@ node bin/stashpad.mjs search sqlite
 ```
 
 Agents: read [AGENT-GUIDE.md](AGENT-GUIDE.md).
+
+Start of a session, for any agent:
+
+```bash
+node bin/stashpad.mjs brief                      # short summary, newest handover first
+node bin/stashpad.mjs handover --text "Half done: auth. Next: tests."   # note for the next session
+node bin/stashpad.mjs sync-agents AGENTS.md      # put the brief in a file agents already read
+```
 
 ## Install and run
 

@@ -9,6 +9,7 @@ import { importMemories } from "./importer.mjs";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { exportMemories } from "./export.mjs";
 import { archiveSource } from "./sources.mjs";
+import { buildBrief, DEFAULT_BRIEF_CHARS, HANDOVER_PREFIX, syncAgentsFile } from "./brief.mjs";
 import { contractOf } from "./contract.mjs";
 import { VERSION, STORE_FORMAT } from "./version.mjs";
 import {
@@ -31,6 +32,7 @@ import {
   rejectPending,
   saveMemory,
   searchMemories,
+  todayIso,
 } from "./store.mjs";
 
 export const USAGE = `Usage:
@@ -49,6 +51,9 @@ export const USAGE = `Usage:
   stashpad eval [--json]       run the fixed checks and baselines in a temporary store
   stashpad mcp                 serve the five agent tools over stdio (for MCP clients)
   stashpad ui [--port N] [--open]   review waiting memories in a page on this computer (Ctrl+C stops it)
+  stashpad brief [--max-chars N] [--json]   short plain-text summary for the start of a session (any agent can read it)
+  stashpad handover --text "<what the next session needs>" [--source-type user|agent]   leave a note for the next session
+  stashpad sync-agents [<file>]        put the brief into AGENTS.md (or another file) between markers; other text is kept
   stashpad snapshot [--label <name>]   copy the store to <store>/.snapshots/ (an automatic one is taken daily before edits)
   stashpad snapshots [--json]          list snapshots
   stashpad restore <snapshot> [--yes]  put a snapshot back (without --yes it only shows what would happen)
@@ -96,6 +101,7 @@ const OPTIONS = {
   dir: { type: "string" },
   label: { type: "string" },
   "dry-run": { type: "boolean" },
+  "max-chars": { type: "string" },
   yes: { type: "boolean" },
   version: { type: "boolean", short: "v" },
   help: { type: "boolean", short: "h" },
@@ -372,6 +378,53 @@ function cmdSearch(io, dir, query, values) {
   return 0;
 }
 
+function cmdBrief(io, dir, values) {
+  const maxChars = values["max-chars"] === undefined ? DEFAULT_BRIEF_CHARS : Number(values["max-chars"]);
+  if (!Number.isInteger(maxChars) || maxChars < 300 || maxChars > 20000) {
+    return usageError(io, "--max-chars must be a whole number from 300 to 20000");
+  }
+  const brief = buildBrief(dir, { maxChars });
+  io.stdout(values.json ? JSON.stringify(brief) : brief.text);
+  return 0;
+}
+
+async function cmdHandover(io, dir, values) {
+  if (values.text === undefined) {
+    return usageError(io, 'handover needs --text, for example: stashpad handover --text "Auth work is half done; next: add tests."');
+  }
+  const text = values.text === "-" ? await io.readStdin() : values.text;
+  const today = todayIso();
+  const { rows } = listMemories(dir);
+  const existing = new Set(rows.map((r) => r.id));
+  let id = `${HANDOVER_PREFIX}${today}`;
+  for (let n = 2; existing.has(id) || existsSync(join(dir, "pending", `${id}.md`)); n += 1) {
+    id = `${HANDOVER_PREFIX}${today}-${n}`;
+  }
+  const previous = rows.filter((r) => r.id.startsWith(HANDOVER_PREFIX)).map((r) => r.id).sort().pop() ?? null;
+  const sourceType = values["source-type"] ?? "user";
+  const result = saveMemory(dir, {
+    id,
+    kind: "task",
+    text,
+    sourceType,
+    sourceRef: values["source-ref"] ?? "handover note",
+    supersedes: sourceType === "user" ? previous : null,
+  });
+  io.stdout(
+    result.status === "queued"
+      ? `Queued ${id} for review. It shows in the brief once a person accepts it.`
+      : `Saved ${id}. The next session sees it first in "stashpad brief".`,
+  );
+  return 0;
+}
+
+function cmdSyncAgents(io, dir, file) {
+  const done = syncAgentsFile(dir, file ?? join(io.cwd, "AGENTS.md"));
+  io.stdout(`${done.action} the Stashpad block in ${file ?? "AGENTS.md"} (${done.shown} of ${done.total} memories).`);
+  io.stdout("Note: that file now holds copies of your memories. Do not commit it if they are private.");
+  return 0;
+}
+
 function cmdSnapshot(io, dir, values) {
   const made = createSnapshot(dir, values.label ?? "manual");
   io.stdout(`Snapshot ${made.name} (${made.files} files). Put it back with: stashpad restore ${made.name} --yes`);
@@ -468,6 +521,12 @@ export async function run(argv, io = defaultIo()) {
       case "import":
         if (!id) return usageError(io, "import needs a file, for example: stashpad import notes.jsonl");
         return cmdImport(io, dir, id, values);
+      case "brief":
+        return cmdBrief(io, dir, values);
+      case "handover":
+        return await cmdHandover(io, dir, values);
+      case "sync-agents":
+        return cmdSyncAgents(io, dir, id);
       case "snapshot":
         return cmdSnapshot(io, dir, values);
       case "snapshots":
