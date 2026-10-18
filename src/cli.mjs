@@ -10,6 +10,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { exportMemories } from "./export.mjs";
 import { archiveSource } from "./sources.mjs";
 import { buildBrief, DEFAULT_BRIEF_CHARS, HANDOVER_PREFIX, syncAgentsFile } from "./brief.mjs";
+import { runDoctor } from "./doctor.mjs";
 import { contractOf } from "./contract.mjs";
 import { VERSION, STORE_FORMAT } from "./version.mjs";
 import {
@@ -51,6 +52,7 @@ export const USAGE = `Usage:
   stashpad eval [--json]       run the fixed checks and baselines in a temporary store
   stashpad mcp                 serve the five agent tools over stdio (for MCP clients)
   stashpad ui [--port N] [--open]   review waiting memories in a page on this computer (Ctrl+C stops it)
+  stashpad doctor [--json]             check that Stashpad and the store are healthy, with a fix for each problem
   stashpad brief [--max-chars N] [--json]   short plain-text summary for the start of a session (any agent can read it)
   stashpad handover --text "<what the next session needs>" [--source-type user|agent]   leave a note for the next session
   stashpad sync-agents [<file>]        put the brief into AGENTS.md (or another file) between markers; other text is kept
@@ -378,6 +380,21 @@ function cmdSearch(io, dir, query, values) {
   return 0;
 }
 
+function cmdDoctor(io, dir, values) {
+  const report = runDoctor(dir);
+  if (values.json) {
+    io.stdout(JSON.stringify(report, null, 2));
+  } else {
+    io.stdout(`Stashpad ${report.version}, store: ${dir}`);
+    for (const c of report.checks) {
+      io.stdout(`${c.status.toUpperCase().padEnd(4)}  ${c.name}: ${c.detail}`);
+      if (c.fix) io.stdout(`        fix: ${c.fix}`);
+    }
+    io.stdout(report.healthy ? "Nothing is broken." : "Something needs fixing. See the FAIL lines above.");
+  }
+  return report.healthy ? 0 : 1;
+}
+
 function cmdBrief(io, dir, values) {
   const maxChars = values["max-chars"] === undefined ? DEFAULT_BRIEF_CHARS : Number(values["max-chars"]);
   if (!Number.isInteger(maxChars) || maxChars < 300 || maxChars > 20000) {
@@ -521,6 +538,8 @@ export async function run(argv, io = defaultIo()) {
       case "import":
         if (!id) return usageError(io, "import needs a file, for example: stashpad import notes.jsonl");
         return cmdImport(io, dir, id, values);
+      case "doctor":
+        return cmdDoctor(io, dir, values);
       case "brief":
         return cmdBrief(io, dir, values);
       case "handover":
@@ -569,6 +588,18 @@ export async function run(argv, io = defaultIo()) {
   } catch (error) {
     if (error instanceof StoreError) {
       io.stderr(`Error: ${error.message}`);
+      return 1;
+    }
+    const hints = {
+      EACCES: "no permission for that file or folder",
+      EPERM: "the system does not allow that change",
+      ENOSPC: "the disk is full",
+      ENOENT: "a file or folder was not found",
+      EROFS: "the folder is read-only",
+      EISDIR: "a folder was given where a file was expected",
+    };
+    if (typeof error?.code === "string" && hints[error.code]) {
+      io.stderr(`Error: ${hints[error.code]} (${error.path ?? error.code}). Run "stashpad doctor" to check the setup.`);
       return 1;
     }
     throw error;
