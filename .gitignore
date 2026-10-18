@@ -5,3 +5,7 @@ dist/
 .env
 .stashpad/
 .snapshots/
+mcp-publisher
+mcp-publisher.exe
+mcp-publisher*.tar.gz
+.mcpregistry_*
