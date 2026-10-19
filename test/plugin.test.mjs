@@ -17,7 +17,9 @@ test("plugin files are valid and agree with the package version", () => {
   assert.equal(json(".claude-plugin/plugin.json").name, "stashpad");
   assert.equal(json(".claude-plugin/marketplace.json").plugins[0].name, "stashpad");
   assert.equal(json(".mcp.json").mcpServers.stashpad.args.at(-1), "mcp");
-  assert.equal(json("hooks/hooks.json").hooks.SessionStart.length, 1);
+  const hooks = json("hooks/hooks.json").hooks;
+  assert.deepEqual(Object.keys(hooks).sort(), ["PreCompact", "SessionEnd", "SessionStart", "UserPromptSubmit"]);
+  for (const list of Object.values(hooks)) assert.match(list[0].hooks[0].command, /stashpad\.mjs" hook /);
 });
 
 test("the session start hook command runs quickly, never fails and stays short", () => {

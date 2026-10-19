@@ -8,7 +8,7 @@ Stashpad does not depend on one model or one company. There are three ways in; u
 
 ## Claude Code (optional extra)
 
-The repository is also a Claude Code plugin: a start-of-session hook that prints the brief, the MCP server, a skill and two commands (`/memory`, `/handover`). It is a thin layer over the commands above; nothing in the core needs it.
+The repository is also a Claude Code plugin: hooks that print the brief at the start and after compaction, add matching memories to each prompt and leave a handoff before compaction (see `docs/HOOKS.md`), the MCP server, a skill and two commands (`/memory`, `/handover`). It is a thin layer over the commands above; nothing in the core needs it.
 
 ## Why the contract is frozen
 

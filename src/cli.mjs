@@ -15,6 +15,9 @@ import { aboutEntity, listEntities } from "./entities.mjs";
 import { decryptStore, encryptStore } from "./encrypt.mjs";
 import { encryptionOf } from "./vault.mjs";
 import { checkClientLaunch, checkPathNode } from "./clientcheck.mjs";
+import { HOOK_EVENTS, parseEvent, runHook } from "./hooks.mjs";
+import { pinMemory, readPins, unpinMemory } from "./pins.mjs";
+import { recall } from "./recall.mjs";
 import { runDoctor } from "./doctor.mjs";
 import { contractOf } from "./contract.mjs";
 import { VERSION, STORE_FORMAT } from "./version.mjs";
@@ -54,6 +57,9 @@ export const USAGE = `Usage:
                --since YYYY-MM-DD  --until YYYY-MM-DD (on valid_from)
   stashpad entities [--limit N] [--json]  names, tools and files the memories talk about, most mentioned first
   stashpad about <name...> [--json]       the memories about one of them, and what is mentioned with it
+  stashpad pin <id> | unpin <id> | pins   pin the few rules every session must see (a person only; at most 12)
+  stashpad recall <words...> [--json]     the memories that clearly match a request (what the prompt hook adds)
+  stashpad hook <session-start|prompt|pre-compact|session-end>   for agent hooks: reads the event JSON on stdin, never fails
   stashpad confirm <id>                   say a memory is still true (updates last_confirmed_at)
   stashpad forget <id> --reason "<why>"   ask for a memory to end (a person accepts it)
   stashpad review [--json]
@@ -149,6 +155,7 @@ export function defaultIo() {
     stderr: (s) => process.stderr.write(`${s}\n`),
     env: process.env,
     cwd: process.cwd(),
+    stdinIsTTY: process.stdin.isTTY === true,
     readStdin: () =>
       new Promise((resolve, reject) => {
         let data = "";
@@ -689,6 +696,40 @@ export async function run(argv, io = defaultIo()) {
         io.stdout(`${result.name}: ${result.memories.length} memory/memories`);
         for (const m of result.memories) io.stdout(`  ${m.id}  ${m.kind}  ${m.summary}`);
         if (result.related.length > 0) io.stdout(`Mentioned with: ${result.related.map((r) => `${r.name} (${r.together})`).join(", ")}`);
+        return 0;
+      }
+      case "pin":
+      case "unpin": {
+        if (!id) return usageError(io, `${command} needs an id, for example: stashpad ${command} no-force-push`);
+        const done = command === "pin" ? pinMemory(dir, id) : unpinMemory(dir, id);
+        io.stdout(done.changed ? `${command === "pin" ? "Pinned" : "Unpinned"} ${id} (${done.count} pinned).` : `Nothing changed (${done.count} pinned).`);
+        return 0;
+      }
+      case "pins": {
+        const pins = readPins(dir);
+        if (values.json) io.stdout(JSON.stringify(pins));
+        else io.stdout(pins.length ? pins.join("\n") : "Nothing pinned. Pin a rule with: stashpad pin <id>");
+        return 0;
+      }
+      case "recall": {
+        const words = positionals.slice(1).join(" ").trim();
+        if (!words) return usageError(io, 'recall needs words, for example: stashpad recall "add a database migration"');
+        const result = recall(dir, words);
+        if (values.json) io.stdout(JSON.stringify(result));
+        else io.stdout(result.text || "No clear match.");
+        return 0;
+      }
+      case "hook": {
+        if (!HOOK_EVENTS.includes(id)) return usageError(io, `hook needs one of: ${HOOK_EVENTS.join(", ")}`);
+        let raw = "";
+        try {
+          raw = io.stdinIsTTY ? "" : await io.readStdin();
+        } catch {
+          raw = "";
+        }
+        const out = runHook(dir, id, parseEvent(raw));
+        if (typeof out === "object" && out?.error) io.stderr(`stashpad hook ${id}: ${out.error}`);
+        else if (out) io.stdout(out);
         return 0;
       }
       case "confirm": {

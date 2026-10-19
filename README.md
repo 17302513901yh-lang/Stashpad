@@ -120,6 +120,7 @@ Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `sou
 
 - [Search words and synonyms](docs/FORMAT.md#search-words-and-synonyms)
 - [Handoffs, feedback, lint, expiry and ReversePort](docs/HANDOFFS.md)
+- [Hooks: survive compaction, pinned rules, recall per prompt](docs/HOOKS.md)
 - [Optional encryption](docs/ENCRYPTION.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Changelog](CHANGELOG.md)

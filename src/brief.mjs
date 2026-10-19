@@ -5,6 +5,10 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
 import { isCurrent, listPending, readEntries, todayIso } from "./store.mjs";
 import { openHandoffSummary } from "./handoff.mjs";
+import { readPins } from "./pins.mjs";
+
+const PIN_CHARS = 300;
+const PIN_BUDGET = 0.5; // pinned rules may use at most half of the brief
 
 export const DEFAULT_BRIEF_CHARS = 1500;
 const KIND_ORDER = ["preference", "decision", "task", "fact"];
@@ -31,8 +35,12 @@ export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayI
   const heldBack = current.length - safe.length;
 
   // Only the newest handover note is shown; older ones are history.
-  const handovers = safe.filter((e) => isHandoverId(e.id)).sort((a, b) => b.id.localeCompare(a.id));
-  const others = safe.filter((e) => !isHandoverId(e.id));
+  // Pinned memories come first, in full (up to a limit), because a person said they must not be missed.
+  const pinIds = readPins(dir);
+  const pinned = pinIds.map((id) => safe.find((e) => e.id === id)).filter(Boolean);
+  const pinnedSet = new Set(pinned.map((e) => e.id));
+  const handovers = safe.filter((e) => isHandoverId(e.id) && !pinnedSet.has(e.id)).sort((a, b) => b.id.localeCompare(a.id));
+  const others = safe.filter((e) => !isHandoverId(e.id) && !pinnedSet.has(e.id));
   const ordered = [...handovers.slice(0, 1), ...others].sort((a, b) => {
     const [ah, ak] = rank(a);
     const [bh, bk] = rank(b);
@@ -58,6 +66,21 @@ export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayI
   const lines = [];
   let used = head.length;
   let shown = 0;
+  if (pinned.length > 0) {
+    const pinLines = ["Pinned by a person (the user's standing rules and preferences):"];
+    let pinUsed = pinLines[0].length;
+    for (const entry of pinned) {
+      const line = `- ${entry.id}: ${oneLine(entry.body, PIN_CHARS)}`;
+      if (pinUsed + line.length + 1 > maxChars * PIN_BUDGET) break;
+      pinLines.push(line);
+      pinUsed += line.length + 1;
+      shown += 1;
+    }
+    if (pinLines.length > 1) {
+      lines.push(...pinLines, "Other memories:");
+      used += pinUsed + 17;
+    }
+  }
   const reserve = 140 + tailParts.join(" ").length;
   for (const entry of ordered) {
     const line = `- [${entry.meta.kind}] ${entry.id}: ${oneLine(entry.body, LINE_CHARS)}`;
@@ -66,7 +89,7 @@ export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayI
     used += line.length + 1;
     shown += 1;
   }
-  const more = ordered.length - shown;
+  const more = ordered.length + pinned.length - shown;
   if (more > 0) tailParts.unshift(`${more} more not shown; search for them.`);
 
   const text = [head, ...lines, ...tailParts].join("\n");
