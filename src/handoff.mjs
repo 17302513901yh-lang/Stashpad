@@ -4,7 +4,8 @@
 // writes (manual) goes before one a tool or hook writes (auto), and a newer auto note expires the older open auto
 // notes. The idea follows ai-memory's typed handoffs (MIT, akitaonrails); this is Stashpad's own small version:
 // one JSON file per handoff in <store>/handoffs, sealed when the store is encrypted, written under the store lock.
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, appendFileSync } from "node:fs";
+import { writeAtomic } from "./fsx.mjs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { StoreError } from "./errors.mjs";
@@ -29,14 +30,7 @@ function stamp(now) {
 function write(dir, record) {
   mkdirSync(folder(dir), { recursive: true });
   const path = pathOf(dir, record.id);
-  const temp = `${path}.${process.pid}.tmp`;
-  try {
-    writeFileSync(temp, sealFor(dir, `${JSON.stringify(record, null, 2)}\n`), { flag: "wx" });
-    renameSync(temp, path);
-  } catch (error) {
-    rmSync(temp, { force: true });
-    throw error;
-  }
+  writeAtomic(path, sealFor(dir, `${JSON.stringify(record, null, 2)}\n`));
 }
 
 function audit(dir, entry) {

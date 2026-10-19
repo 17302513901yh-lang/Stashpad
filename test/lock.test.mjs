@@ -64,3 +64,24 @@ test("the lock is re-entrant inside one process", () => {
   assert.equal(result, 42);
   assert.equal(existsSync(join(dir, LOCK_FILE)), false);
 });
+
+test("a lock file that was just created but not yet written is not broken", () => {
+  const dir = fresh();
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, LOCK_FILE), ""); // another process between create and write
+  process.env.STASHPAD_LOCK_WAIT_MS = "150";
+  try {
+    assert.throws(() => saveMemory(dir, { id: "x", kind: "fact", text: "Must wait for the half-written lock.", sourceType: "user", sourceRef: "t" }), /busy/);
+    assert.equal(existsSync(join(dir, LOCK_FILE)), true);
+  } finally {
+    delete process.env.STASHPAD_LOCK_WAIT_MS;
+  }
+});
+
+test("many processes at once still lose nothing (stress)", async () => {
+  const dir = fresh();
+  mkdirSync(dir, { recursive: true });
+  await Promise.all(["d", "e", "f", "g", "h", "i"].map((p) => writer(dir, p, 10)));
+  assert.equal(readdirSync(dir).filter((n) => n.endsWith(".md")).length, 60);
+  assert.equal(readdirSync(dir).some((n) => n.endsWith(".tmp") || n.endsWith(".break")), false);
+});

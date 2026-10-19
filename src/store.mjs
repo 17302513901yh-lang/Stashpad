@@ -10,7 +10,6 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -31,6 +30,7 @@ import { MAX_TEXT_CHARS, MAX_WAITING, findHiddenCharacters, findInstructionLikeT
 import { lstatSync } from "node:fs";
 
 import { StoreError } from "./errors.mjs";
+import { moveFile, writeAtomic } from "./fsx.mjs";
 import { withStoreLock } from "./lock.mjs";
 import { keyFor, openLine, readData, sealFor, sealLine } from "./vault.mjs";
 import { gateReason, relatedTo } from "./gate.mjs";
@@ -50,16 +50,6 @@ function isSymlink(path) {
 }
 
 // Replaces a file in one step, so the old content stays whole if the new one cannot be written.
-function writeAtomic(path, content) {
-  const temp = `${path}.${process.pid}.tmp`;
-  try {
-    writeFileSync(temp, content, { flag: "wx" });
-    renameSync(temp, path);
-  } catch (error) {
-    rmSync(temp, { force: true });
-    throw error;
-  }
-}
 
 // A rejected write keeps its file name. If that name is taken, a number is added, so no earlier rejection is overwritten.
 function uniquePath(folder, name) {
@@ -538,7 +528,7 @@ function rejectPendingUnlocked(dir, id, reason = null) {
   const folder = join(dir, REJECTED);
   mkdirSync(folder, { recursive: true });
   const to = uniquePath(folder, basename(from));
-  renameSync(from, to);
+  moveFile(from, to);
   appendAudit(dir, { action: "rejected", id, reason });
   return to;
 }

@@ -8,13 +8,12 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  renameSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { StoreError } from "./errors.mjs";
+import { writeAtomic } from "./fsx.mjs";
 import { withStoreLock } from "./lock.mjs";
 import { MARKER_BACKUP, SEAL_PREFIX, encryptionOf, keyFor, readData, sealLine } from "./vault.mjs";
 import { validateDocuments } from "./memory-format.mjs";
@@ -34,16 +33,6 @@ function isRegularFile(path) {
   return existsSync(path) && lstatSync(path).isFile();
 }
 
-function writeAtomic(path, content) {
-  const temp = `${path}.${process.pid}.tmp`;
-  try {
-    writeFileSync(temp, content, { flag: "wx" });
-    renameSync(temp, path);
-  } catch (error) {
-    rmSync(temp, { force: true });
-    throw error;
-  }
-}
 
 function appendAudit(dir, entry) {
   appendFileSync(join(dir, "audit.jsonl"), `${sealLine(dir, JSON.stringify({ at: new Date().toISOString(), ...entry }))}\n`);

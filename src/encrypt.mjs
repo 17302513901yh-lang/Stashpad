@@ -1,9 +1,10 @@
 // "stashpad encrypt" and "stashpad decrypt": convert a whole store, snapshots included.
 // Each file is rewritten on its own with a temp file and a rename, and reading accepts both forms,
 // so a run that stops halfway can simply be started again.
-import { existsSync, lstatSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, appendFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { StoreError } from "./errors.mjs";
+import { writeAtomic } from "./fsx.mjs";
 import { withStoreLock } from "./lock.mjs";
 import { MARKER, SNAPSHOTS, assertWritable, hasSealedFiles, readStoreFormat, writeMarker } from "./safety.mjs";
 import { STORE_FORMAT } from "./version.mjs";
@@ -18,16 +19,6 @@ import {
   sealWith,
 } from "./vault.mjs";
 
-function writeAtomic(path, content) {
-  const temp = `${path}.${process.pid}.tmp`;
-  try {
-    writeFileSync(temp, content, { flag: "wx" });
-    renameSync(temp, path);
-  } catch (error) {
-    rmSync(temp, { force: true });
-    throw error;
-  }
-}
 
 const isFile = (path) => existsSync(path) && lstatSync(path).isFile();
 const isDir = (path) => existsSync(path) && lstatSync(path).isDirectory();
