@@ -66,3 +66,12 @@ test("gatekeeper never blocks what a person saves", () => {
   saveMemory(dir, input("a", "Use tabs for indentation in this project."));
   saveMemory(dir, input("b", "Tabs only."));
 });
+
+test("the brief and doctor warn before the review queue is full", async () => {
+  const { buildBrief } = await import("../src/brief.mjs");
+  const { runDoctor } = await import("../src/doctor.mjs");
+  const dir = fresh();
+  for (let i = 0; i < MAX_WAITING * 0.8; i += 1) saveMemory(dir, input(`w${i}`, `unique${i}a unique${i}b unique${i}c`, "agent"));
+  assert.match(buildBrief(dir).text, /Review queue almost full/);
+  assert.equal(runDoctor(dir).checks.find((c) => c.name === "review queue").status, "warn");
+});

@@ -2,7 +2,7 @@
 // purpose: any agent can read it, whether it gets it from a command, a tool call or a file such as
 // AGENTS.md. It stays small because hook and context limits cut long output.
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
+import { DATA_LABEL, MAX_WAITING, findInstructionLikeText } from "./security.mjs";
 import { isCurrent, listPending, readEntries, todayIso } from "./store.mjs";
 import { openHandoffSummary } from "./handoff.mjs";
 import { readPins } from "./pins.mjs";
@@ -60,7 +60,9 @@ export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayI
   const handoff = openHandoffSummary(dir);
   const head = handoff ? `${headBase}\nOpen handoff${handoff.count > 1 ? `s: ${handoff.count}, first` : ''}${handoff.first.from ? ` from ${handoff.first.from}` : ''}: take it once with stashpad handoff claim (or stashpad_handoff action claim).` : headBase;
   const tailParts = [];
-  if (waiting > 0) tailParts.push(`${waiting} waiting for a person to review (not shown).`);
+  if (waiting >= MAX_WAITING * 0.8) {
+    tailParts.push(`Review queue almost full: ${waiting} of ${MAX_WAITING}. New agent notes are refused when it is full; ask the user to run stashpad review.`);
+  } else if (waiting > 0) tailParts.push(`${waiting} waiting for a person to review (not shown).`);
   if (heldBack > 0) tailParts.push(`${heldBack} held back because they read like instructions; a person should check them.`);
 
   const lines = [];

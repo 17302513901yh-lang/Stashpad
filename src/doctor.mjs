@@ -7,6 +7,7 @@ import { validateDocuments } from "./memory-format.mjs";
 import { handleMessage, TOOLS } from "./mcp.mjs";
 import { MARKER, hasSealedFiles, isInsideInstall, listSnapshots, markerRescue, readStoreFormat } from "./safety.mjs";
 import { loadStoreSynonyms } from "./synonyms.mjs";
+import { MAX_WAITING } from "./security.mjs";
 import { contentHash, saveMemory, staleMemories } from "./store.mjs";
 import { parseMemory } from "./memory-format.mjs";
 import { encryptionOf, keyFor, openLine, readData } from "./vault.mjs";
@@ -123,7 +124,11 @@ function checkStore(dir) {
 
   const pending = join(dir, "pending");
   const waiting = existsSync(pending) ? readdirSync(pending).length : 0;
-  if (waiting > 0) checks.push(warn("review queue", `${waiting} write(s) waiting for review`, 'Run "stashpad review", then accept or reject.'));
+  if (waiting >= MAX_WAITING) {
+    checks.push(fail("review queue", `full: ${waiting} of ${MAX_WAITING}; new agent notes are being refused`, 'Run "stashpad review" (or "stashpad ui") and accept or reject.'));
+  } else if (waiting > 0) {
+    checks.push(warn("review queue", `${waiting} of ${MAX_WAITING} write(s) waiting for review`, 'Run "stashpad review", then accept or reject.'));
+  }
   if (problems.length === 0) {
     const edited = editedByHand(dir, files);
     if (edited.length > 0) {
