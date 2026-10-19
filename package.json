@@ -1,6 +1,6 @@
 {
   "name": "stashpad",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Local memory for any AI agent: plain Markdown files with sources, dates, a review queue, search and optional encryption. CLI and MCP server, no dependencies.",
   "license": "MIT",
   "author": "laaielichter",

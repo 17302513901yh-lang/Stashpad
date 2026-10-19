@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2
+
+- **Handoffs.** `stashpad handoff leave / list / claim / cancel`: a note for the next session that is read exactly once, with expiry. Agents use `stashpad_handoff`.
+- **Feedback and lint.** `stashpad feedback <id> --signal helpful|stale|wrong` and `stashpad lint` (rules only, changes nothing). Agents use `stashpad_feedback`.
+- **Expiry.** `stashpad save ... --expires YYYY-MM-DD`.
+- **ReversePort.** ReversePort finds earlier findings and open handoffs in Stashpad when both are installed.
+- **Windows.** File writes retry when Windows briefly holds a file; the store lock never breaks a lock that was just created, and two processes can no longer both remove a stale lock.
+- MCP Registry listing as `io.github.laaielichter/stashpad`.
+
 ## 0.2.1
 
 - Published under the plain name `stashpad`. 0.2.0 went out by mistake as `@laaielichter/stashpad` and was withdrawn.
