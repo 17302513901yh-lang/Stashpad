@@ -18,6 +18,7 @@ import { checkClientLaunch, checkPathNode } from "./clientcheck.mjs";
 import { HOOK_EVENTS, parseEvent, runHook } from "./hooks.mjs";
 import { pinMemory, readPins, unpinMemory } from "./pins.mjs";
 import { recall } from "./recall.mjs";
+import { globalStore, locateStore } from "./locate.mjs";
 import { runDoctor } from "./doctor.mjs";
 import { contractOf } from "./contract.mjs";
 import { VERSION, STORE_FORMAT } from "./version.mjs";
@@ -72,6 +73,7 @@ export const USAGE = `Usage:
   stashpad mcp                 serve the eight agent tools over stdio (for MCP clients)
   stashpad ui [--port N] [--open]   review waiting memories in a page on this computer (Ctrl+C stops it)
   stashpad setup [generic|claude-code|vscode|codex|agents-md]   print the settings that connect an agent to Stashpad
+  stashpad where [--json]              which store this folder uses, and why
   stashpad doctor [--client] [--json]  check that Stashpad and the store are healthy, with a fix for each problem
   stashpad brief [--max-chars N] [--json]   short plain-text summary for the start of a session (any agent can read it)
   stashpad handover --text "<what the next session needs>" [--source-type user|agent]   leave a note for the next session
@@ -96,7 +98,9 @@ Notes:
   A save with agent, tool or web waits in review until a person runs accept or reject.
 
 Options:
-  --dir <folder>      where memories live (default: $STASHPAD_DIR, or ./.stashpad/memories)
+  --dir <folder>      where memories live (default: $STASHPAD_DIR, else .stashpad/memories in the project:
+                      the nearest folder above that has one, else the git root; worktrees share the main one)
+  --global, -g        use the global store (~/.stashpad/global or $STASHPAD_GLOBAL_DIR) for what is true in every project
   --text -            read the memory text from standard input
   --supersedes <id>   the memory this one replaces; that one gets an end date
   --source-file <path> keep a copy of the raw source in the store (up to 5 MB), linked from source_ref
@@ -132,6 +136,7 @@ const OPTIONS = {
   label: { type: "string" },
   "dry-run": { type: "boolean" },
   client: { type: "boolean" },
+  global: { type: "boolean", short: "g" },
   "max-chars": { type: "string" },
   expires: { type: "string" },
   "expires-days": { type: "string" },
@@ -466,7 +471,7 @@ async function cmdDoctor(io, dir, values) {
   if (values.json) {
     io.stdout(JSON.stringify(report, null, 2));
   } else {
-    io.stdout(`Stashpad ${report.version}, store: ${dir}`);
+    io.stdout(`Stashpad ${report.version}, store: ${dir}${values.where ? ` (${values.where})` : ""}`);
     for (const c of report.checks) {
       io.stdout(`${c.status.toUpperCase().padEnd(4)}  ${c.name}: ${c.detail}`);
       if (c.fix) io.stdout(`        fix: ${c.fix}`);
@@ -656,7 +661,8 @@ export async function run(argv, io = defaultIo()) {
   }
 
   const [command, id] = positionals;
-  const dir = values.dir ?? io.env.STASHPAD_DIR ?? join(io.cwd, ".stashpad", "memories");
+  const located = locateStore({ cwd: io.cwd, env: io.env, explicit: values.dir, global: values.global === true });
+  const dir = located.dir;
 
   try {
     switch (command) {
@@ -727,7 +733,7 @@ export async function run(argv, io = defaultIo()) {
         } catch {
           raw = "";
         }
-        const out = runHook(dir, id, parseEvent(raw));
+        const out = runHook(dir, id, parseEvent(raw), { globalDir: values.global ? null : globalStore(io.env) });
         if (typeof out === "object" && out?.error) io.stderr(`stashpad hook ${id}: ${out.error}`);
         else if (out) io.stdout(out);
         return 0;
@@ -748,8 +754,16 @@ export async function run(argv, io = defaultIo()) {
         return cmdImport(io, dir, id, values);
       case "setup":
         return cmdSetup(io, dir, id, values);
+      case "where":
+        if (values.json) io.stdout(JSON.stringify({ dir, how: located.how, global: globalStore(io.env) }));
+        else {
+          io.stdout(`${dir}`);
+          io.stdout(`chosen by: ${located.how}`);
+          io.stdout(`global store: ${globalStore(io.env)}${existsSync(globalStore(io.env)) ? "" : " (not made yet)"}`);
+        }
+        return 0;
       case "doctor":
-        return await cmdDoctor(io, dir, values);
+        return await cmdDoctor(io, dir, { ...values, where: located.how });
       case "brief":
         return cmdBrief(io, dir, values);
       case "handover":

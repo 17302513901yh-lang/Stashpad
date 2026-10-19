@@ -38,7 +38,7 @@ npm run build            # build dist/
 node bin/stashpad.mjs --help
 ```
 
-Memories live in `./.stashpad/memories` by default. Set `STASHPAD_DIR` or pass `--dir`.
+Memories live in `.stashpad/memories` of the project: the nearest folder above that has one, else the git root, so subfolders and git worktrees share one store. `stashpad where` shows which store a folder uses and why. Set `STASHPAD_DIR` or pass `--dir` to choose yourself. What is true in every project (your language, your commit style) goes in the global store: add `--global` (or `-g`).
 
 ## Use it
 

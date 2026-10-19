@@ -9,6 +9,8 @@ import { createHandoff } from "./handoff.mjs";
 import { recall } from "./recall.mjs";
 import { readPins } from "./pins.mjs";
 import { findSecrets } from "./security.mjs";
+import { existsSync as exists } from "node:fs";
+import { resolve } from "node:path";
 
 export const HOOK_EVENTS = ["session-start", "prompt", "pre-compact", "session-end"];
 const TAIL_BYTES = 2 * 1024 * 1024;
@@ -93,16 +95,26 @@ export function handoffText(summary, reason) {
 }
 
 // Returns the text to print (may be empty). Never throws.
-export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS } = {}) {
+export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS, globalDir = null } = {}) {
+  const global = globalDir && resolve(globalDir) !== resolve(dir) && exists(globalDir) ? globalDir : null;
   try {
     switch (event) {
       case "session-start": {
-        const brief = buildBrief(dir, { maxChars });
         const after = input.source === "compact" ? "Context was just compacted. Your Stashpad memory, again:\n" : "";
-        return after + brief.text;
+        if (!global) return after + buildBrief(dir, { maxChars }).text;
+        // Project first; the global store (true in every project) gets a third of the room.
+        const project = buildBrief(dir, { maxChars: Math.floor(maxChars * 0.67) }).text;
+        const everywhere = buildBrief(global, { maxChars: Math.floor(maxChars * 0.33) }).text.split("\n").slice(1);
+        return `${after}${project}\nGlobal store (all projects):\n${everywhere.join("\n")}`;
       }
-      case "prompt":
-        return recall(dir, input.prompt ?? "", { exclude: readPins(dir) }).text;
+      case "prompt": {
+        const local = recall(dir, input.prompt ?? "", { exclude: readPins(dir) });
+        if (!global) return local.text;
+        const wide = recall(global, input.prompt ?? "", { exclude: readPins(global), limit: Math.max(0, 3 - local.hits.length) });
+        if (!wide.text) return local.text;
+        if (!local.text) return wide.text.replace("Stashpad memories", "Stashpad global memories");
+        return `${local.text}\n${wide.text.split("\n").slice(2).join("\n")}`;
+      }
       case "pre-compact":
       case "session-end": {
         const summary = summarizeTranscript(input.transcript_path, { cwd: input.cwd ?? null });
