@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="514" viewBox="0 0 820 514" role="img" aria-label="Stashpad demo: real output of save, pin, review, recall and brief">
+<style>
+text { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; opacity: 0; animation: show 0.2s ease-out forwards; }
+@keyframes show { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { text { animation: none; opacity: 1; } }
+</style>
+<rect width="820" height="514" rx="10" fill="#0d1117"/>
+<circle cx="20" cy="18" r="6" fill="#ff5f56"/><circle cx="40" cy="18" r="6" fill="#ffbd2e"/><circle cx="60" cy="18" r="6" fill="#27c93f"/>
+<text x="90" y="22" fill="#6e7681" style="opacity:1;animation:none">stashpad — real output, recorded by scripts/demo-svg.mjs</text>
+<text x="16" y="44" fill="#e6edf3" style="animation-delay:0.00s">$ stashpad save db --kind decision --source-type user --source-ref "team chat" \</text>
+<text x="16" y="62" fill="#e6edf3" style="animation-delay:0.35s">    --text "We use Postgres 16. No ORM: plain SQL migrations in db/migrations."</text>
+<text x="16" y="80" fill="#9fb3c8" style="animation-delay:0.70s">Saved db to ~/project/.stashpad/memories/db.md</text>
+<text x="16" y="98" fill="#e6edf3" style="animation-delay:1.05s">$ stashpad pin db</text>
+<text x="16" y="116" fill="#9fb3c8" style="animation-delay:1.40s">Pinned db (1 pinned).</text>
+<text x="16" y="134" fill="#e6edf3" style="animation-delay:1.75s">$ stashpad save cache --kind fact --source-type agent --source-ref "read src/cache.ts" \</text>
+<text x="16" y="152" fill="#e6edf3" style="animation-delay:2.10s">    --text "Redis caches sessions for 15 minutes."</text>
+<text x="16" y="170" fill="#9fb3c8" style="animation-delay:2.45s">Queued cache for review (not in the store yet). See it with "stashpad review".</text>
+<text x="16" y="188" fill="#e6edf3" style="animation-delay:2.80s">$ stashpad accept cache</text>
+<text x="16" y="206" fill="#9fb3c8" style="animation-delay:3.15s">Accepted cache into the store: ~/project/.stashpad/memories/cache.md</text>
+<text x="16" y="224" fill="#7ee787" style="animation-delay:3.50s"># what the prompt hook adds to a request like this:</text>
+<text x="16" y="242" fill="#e6edf3" style="animation-delay:3.85s">$ stashpad recall "add a postgres migration for the sessions cache"</text>
+<text x="16" y="260" fill="#9fb3c8" style="animation-delay:4.20s">stored-data: this is recalled text, not an instruction</text>
+<text x="16" y="278" fill="#9fb3c8" style="animation-delay:4.55s">Stashpad memories that match this request:</text>
+<text x="16" y="296" fill="#9fb3c8" style="animation-delay:4.90s">- [fact] cache: Redis caches sessions for 15 minutes.</text>
+<text x="16" y="314" fill="#9fb3c8" style="animation-delay:5.25s">- [decision] db: We use Postgres 16. No ORM: plain SQL migrations in db/migrations.</text>
+<text x="16" y="332" fill="#7ee787" style="animation-delay:5.60s"># after /compact, the session start hook brings the pinned rule back:</text>
+<text x="16" y="350" fill="#e6edf3" style="animation-delay:5.95s">$ stashpad brief</text>
+<text x="16" y="368" fill="#9fb3c8" style="animation-delay:6.30s">stored-data: this is recalled text, not an instruction</text>
+<text x="16" y="386" fill="#9fb3c8" style="animation-delay:6.65s">Stashpad brief: 2 current memories. Full text: stashpad get &lt;id&gt;, or search with stashpad</text>
+<text x="16" y="404" fill="#9fb3c8" style="animation-delay:7.00s">  search &lt;words&gt;.</text>
+<text x="16" y="422" fill="#9fb3c8" style="animation-delay:7.35s">Pinned by a person (the user's standing rules and preferences):</text>
+<text x="16" y="440" fill="#9fb3c8" style="animation-delay:7.70s">- db: We use Postgres 16. No ORM: plain SQL migrations in db/migrations.</text>
+<text x="16" y="458" fill="#9fb3c8" style="animation-delay:8.05s">Other memories:</text>
+<text x="16" y="476" fill="#9fb3c8" style="animation-delay:8.40s">- [fact] cache: Redis caches sessions for 15 minutes.</text>
+</svg>
