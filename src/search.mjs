@@ -3,11 +3,30 @@ const K1 = 1.2;
 const B = 0.75;
 
 // Lowercase words of two or more letters or digits. Unicode aware, so Dutch works too.
+// Chinese, Japanese and Korean are written without spaces, so a whole sentence would be one "word".
+// Runs of those scripts are split into overlapping pairs of characters (bigrams), the usual way
+// search engines handle them without a dictionary.
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+/gu;
+
 export function tokenize(text) {
-  return text
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((token) => token.length >= 2);
+  const tokens = [];
+  for (const piece of text.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+    if (piece === "") continue;
+    if (!CJK.test(piece)) {
+      if (piece.length >= 2) tokens.push(piece);
+      continue;
+    }
+    CJK.lastIndex = 0;
+    const rest = piece.replace(CJK, " ").split(" ").filter((w) => w.length >= 2);
+    tokens.push(...rest);
+    for (const run of piece.match(CJK)) {
+      const chars = [...run];
+      if (chars.length === 1) tokens.push(run);
+      for (let i = 0; i + 1 < chars.length; i += 1) tokens.push(chars[i] + chars[i + 1]);
+    }
+    CJK.lastIndex = 0;
+  }
+  return tokens;
 }
 
 // Light plural folding, so "tools" finds "tool" and "policies" finds "policy".

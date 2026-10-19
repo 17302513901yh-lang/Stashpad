@@ -155,3 +155,24 @@ test("bm25Rank gives no results for a query without matching terms", () => {
   assert.deepEqual(bm25Rank([{ id: "a", text: "hello world" }], "zebra"), []);
   assert.deepEqual(bm25Rank([{ id: "a", text: "hello world" }], "!!"), []);
 });
+
+test("Chinese, Japanese and Korean text is searchable without spaces", async () => {
+  const { tokenize } = await import("../src/search.mjs");
+  assert.deepEqual(tokenize("数据库"), ["数据", "据库"]);
+  assert.deepEqual(tokenize("Postgres数据库v16"), ["postgres", "v16", "数据", "据库"]);
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { saveMemory, searchMemories } = await import("../src/store.mjs");
+  const dir = join(mkdtempSync(join(tmpdir(), "stashpad-cjk-")), "s");
+  const put = (id, text) => saveMemory(dir, { id, kind: "fact", text, sourceType: "user", sourceRef: "t" });
+  put("zh-db", "项目的数据库是PostgreSQL十六版。");
+  put("ja-deploy", "本番環境へのデプロイは毎週火曜日です。");
+  put("ko-style", "들여쓰기는 탭을 사용합니다.");
+  put("en-note", "The office is closed on Friday.");
+  assert.equal(searchMemories(dir, "数据库").results[0].id, "zh-db");
+  assert.equal(searchMemories(dir, "デプロイ").results[0].id, "ja-deploy");
+  assert.equal(searchMemories(dir, "들여쓰기").results[0].id, "ko-style");
+  assert.equal(searchMemories(dir, "火曜日").results[0].id, "ja-deploy");
+  assert.equal(searchMemories(dir, "office").results[0].id, "en-note");
+});
