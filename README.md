@@ -22,7 +22,7 @@ Agents: read [AGENT-GUIDE.md](AGENT-GUIDE.md).
 Start of a session, for any agent:
 
 ```bash
-node bin/stashpad.mjs doctor                     # check the setup; says what to fix
+node bin/stashpad.mjs doctor --client            # check the setup and start the server like your agent app does
 node bin/stashpad.mjs brief                      # short summary, newest handover first
 node bin/stashpad.mjs handover --text "Half done: auth. Next: tests."   # note for the next session
 node bin/stashpad.mjs sync-agents AGENTS.md      # put the brief in a file agents already read

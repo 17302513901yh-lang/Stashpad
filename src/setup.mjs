@@ -9,14 +9,19 @@ const binPath = () => resolve(fileURLToPath(new URL("../bin/stashpad.mjs", impor
 
 // How to start the server. Run through npx, the install path is a temporary cache that can vanish,
 // so the settings then say "npx -y stashpad mcp" instead of a file path.
-function launcher(bin) {
+// Otherwise the full path to this Node is used, not just "node": an agent app often starts servers
+// with a different PATH than your terminal (nvm, Volta, Windows, macOS apps), and then "node" is
+// missing or too old. That is the most common reason an MCP server does not connect.
+export function launcher(bin, nodePath = process.execPath) {
   if (/[\\/]_npx[\\/]/.test(bin)) return { command: "npx", args: ["-y", "stashpad", "mcp"] };
-  return { command: "node", args: [bin, "mcp"] };
+  return { command: nodePath, args: [bin, "mcp"] };
 }
 
-export function setupText(client, { dir = null, bin: binOverride = null } = {}) {
+export { binPath };
+
+export function setupText(client, { dir = null, bin: binOverride = null, nodePath = process.execPath } = {}) {
   const bin = binOverride ?? binPath();
-  const run = launcher(bin);
+  const run = launcher(bin, nodePath);
   const env = dir === null ? null : { STASHPAD_DIR: resolve(dir) };
   switch (client) {
     case "generic": {

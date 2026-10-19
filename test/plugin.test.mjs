@@ -43,7 +43,7 @@ test("setup prints settings for each client and rejects unknown ones", async () 
   const generic = { stdout: (s) => out.push(s), stderr: () => {}, env: { STASHPAD_DIR: "/data/notes" }, cwd: root, readStdin: async () => "" };
   await run(["setup"], generic);
   const block = JSON.parse(out[0].slice(out[0].indexOf("{")));
-  assert.equal(block.mcpServers.stashpad.command, "node");
+  assert.equal(block.mcpServers.stashpad.command, process.execPath, "the full path to node, not a bare \"node\"");
   assert.equal(block.mcpServers.stashpad.env.STASHPAD_DIR.endsWith("notes"), true);
 
   const err = [];

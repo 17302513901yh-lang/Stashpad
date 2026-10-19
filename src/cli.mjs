@@ -14,6 +14,7 @@ import { CLIENTS, setupText } from "./setup.mjs";
 import { aboutEntity, listEntities } from "./entities.mjs";
 import { decryptStore, encryptStore } from "./encrypt.mjs";
 import { encryptionOf } from "./vault.mjs";
+import { checkClientLaunch, checkPathNode } from "./clientcheck.mjs";
 import { runDoctor } from "./doctor.mjs";
 import { contractOf } from "./contract.mjs";
 import { VERSION, STORE_FORMAT } from "./version.mjs";
@@ -65,7 +66,7 @@ export const USAGE = `Usage:
   stashpad mcp                 serve the eight agent tools over stdio (for MCP clients)
   stashpad ui [--port N] [--open]   review waiting memories in a page on this computer (Ctrl+C stops it)
   stashpad setup [generic|claude-code|vscode|codex|agents-md]   print the settings that connect an agent to Stashpad
-  stashpad doctor [--json]             check that Stashpad and the store are healthy, with a fix for each problem
+  stashpad doctor [--client] [--json]  check that Stashpad and the store are healthy, with a fix for each problem
   stashpad brief [--max-chars N] [--json]   short plain-text summary for the start of a session (any agent can read it)
   stashpad handover --text "<what the next session needs>" [--source-type user|agent]   leave a note for the next session
   stashpad handoff leave --text "<where I stopped, what is next>" [--from <agent>] [--auto] [--expires-days N]
@@ -124,6 +125,7 @@ const OPTIONS = {
   dir: { type: "string" },
   label: { type: "string" },
   "dry-run": { type: "boolean" },
+  client: { type: "boolean" },
   "max-chars": { type: "string" },
   expires: { type: "string" },
   "expires-days": { type: "string" },
@@ -441,8 +443,19 @@ function cmdSetup(io, dir, client, values) {
   return 0;
 }
 
-function cmdDoctor(io, dir, values) {
+async function cmdDoctor(io, dir, values) {
   const report = runDoctor(dir);
+  if (values.client) {
+    const pathNode = checkPathNode(io.env);
+    report.checks.push(pathNode.ok ? { name: "node on PATH", status: "ok", detail: pathNode.detail } : { name: "node on PATH", status: "warn", detail: pathNode.detail, fix: pathNode.fix });
+    const launch = await checkClientLaunch({ dir: values.dir ?? io.env.STASHPAD_DIR ?? dir, env: io.env });
+    report.checks.push(
+      launch.ok
+        ? { name: "client start", status: "ok", detail: `the server ${launch.detail} in ${launch.ms} ms, started like an agent app does` }
+        : { name: "client start", status: "fail", detail: launch.detail + (launch.stderr ? ` | ${launch.stderr}` : ""), fix: launch.fix },
+    );
+    report.healthy = report.checks.every((c) => c.status !== "fail");
+  }
   if (values.json) {
     io.stdout(JSON.stringify(report, null, 2));
   } else {
@@ -695,7 +708,7 @@ export async function run(argv, io = defaultIo()) {
       case "setup":
         return cmdSetup(io, dir, id, values);
       case "doctor":
-        return cmdDoctor(io, dir, values);
+        return await cmdDoctor(io, dir, values);
       case "brief":
         return cmdBrief(io, dir, values);
       case "handover":
