@@ -71,7 +71,8 @@ export function summarizeTranscript(path, { cwd = null, prompts = 3, files = 10 
       for (const part of message.content) {
         const file = part?.type === "tool_use" ? part.input?.file_path ?? part.input?.notebook_path : null;
         if (typeof file === "string") {
-          const shown = cwd && isAbsolute(file) && !relative(cwd, file).startsWith("..") ? relative(cwd, file) : file;
+          // Shown with forward slashes on every system, relative to the project when inside it.
+          const shown = (cwd && isAbsolute(file) && !relative(cwd, file).startsWith("..") ? relative(cwd, file) : file).replace(/\\/g, "/");
           if (!touched.includes(shown)) touched.push(shown);
         }
       }

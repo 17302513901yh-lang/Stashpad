@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { gitRoot, locateStore } from "../src/locate.mjs";
 import { runHook } from "../src/hooks.mjs";
 import { pinMemory } from "../src/pins.mjs";
@@ -35,9 +35,9 @@ test("an existing .stashpad folder nearer than the git root wins; explicit setti
   const pkg = join(root, "packages", "api");
   mkdirSync(join(pkg, ".stashpad", "memories"), { recursive: true });
   assert.equal(locateStore({ cwd: join(pkg), env: {} }).dir, join(pkg, ".stashpad", "memories"));
-  assert.equal(locateStore({ cwd: pkg, env: { STASHPAD_DIR: "/x/y" } }).dir, "/x/y");
-  assert.equal(locateStore({ cwd: pkg, env: { STASHPAD_DIR: "/x/y" }, explicit: "/a/b" }).dir, "/a/b");
-  assert.equal(locateStore({ cwd: pkg, env: { STASHPAD_GLOBAL_DIR: "/g" }, global: true }).dir, "/g");
+  assert.equal(locateStore({ cwd: pkg, env: { STASHPAD_DIR: "/x/y" } }).dir, resolve("/x/y"));
+  assert.equal(locateStore({ cwd: pkg, env: { STASHPAD_DIR: "/x/y" }, explicit: "/a/b" }).dir, resolve("/a/b"));
+  assert.equal(locateStore({ cwd: pkg, env: { STASHPAD_GLOBAL_DIR: "/g" }, global: true }).dir, resolve("/g"));
 });
 
 test("outside any project the current folder is used, and the CLI says why", async () => {
