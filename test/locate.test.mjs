@@ -35,8 +35,8 @@ test("an existing .stashpad folder nearer than the git root wins; explicit setti
   const pkg = join(root, "packages", "api");
   mkdirSync(join(pkg, ".stashpad", "memories"), { recursive: true });
   assert.equal(locateStore({ cwd: join(pkg), env: {} }).dir, join(pkg, ".stashpad", "memories"));
-  assert.equal(locateStore({ cwd: pkg, env: { STASHPAD_DIR: "/x/y" } }).dir, resolve("/x/y"));
-  assert.equal(locateStore({ cwd: pkg, env: { STASHPAD_DIR: "/x/y" }, explicit: "/a/b" }).dir, resolve("/a/b"));
+  assert.equal(locateStore({ cwd: pkg, env: { STASHPAD_DIR: "/x/y" } }).dir, resolve(pkg, "/x/y"));
+  assert.equal(locateStore({ cwd: pkg, env: { STASHPAD_DIR: "/x/y" }, explicit: "/a/b" }).dir, resolve(pkg, "/a/b"));
   assert.equal(locateStore({ cwd: pkg, env: { STASHPAD_GLOBAL_DIR: "/g" }, global: true }).dir, resolve("/g"));
 });
 
