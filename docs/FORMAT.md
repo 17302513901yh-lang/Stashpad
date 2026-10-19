@@ -61,3 +61,13 @@ A store can also hold `synonyms.json` next to the memories (it is not a memory f
 
 A match through a synonym counts half as much as an exact word, so exact matches rank first. Small English and Dutch groups are built in. At most 500 groups of 2 to 20 words; the file may be up to 64 KB. A broken file is ignored and `stashpad doctor` reports it.
 
+## Finding the words that are missing
+
+Searches that find nothing are logged by their meaningful words only (never the whole query) in `misses.jsonl`, sealed in an encrypted store and capped in size. `stashpad misses` lists the most missed words with close words from your memories, and the command to join them:
+
+```bash
+stashpad misses
+#   3x  postgresql  close: postgres  ->  stashpad synonym add postgresql postgres
+stashpad synonym add postgresql postgres
+```
+

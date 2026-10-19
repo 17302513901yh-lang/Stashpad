@@ -19,6 +19,7 @@ import { HOOK_EVENTS, parseEvent, runHook } from "./hooks.mjs";
 import { pinMemory, readPins, unpinMemory } from "./pins.mjs";
 import { recall } from "./recall.mjs";
 import { globalStore, locateStore } from "./locate.mjs";
+import { addSynonyms, logMiss, missReport } from "./misses.mjs";
 import { runDoctor } from "./doctor.mjs";
 import { contractOf } from "./contract.mjs";
 import { VERSION, STORE_FORMAT } from "./version.mjs";
@@ -60,6 +61,8 @@ export const USAGE = `Usage:
                --since YYYY-MM-DD  --until YYYY-MM-DD (on valid_from)
   stashpad entities [--limit N] [--json]  names, tools and files the memories talk about, most mentioned first
   stashpad about <name...> [--json]       the memories about one of them, and what is mentioned with it
+  stashpad misses [--json]             words that searches looked for but did not find, with close words from your memories
+  stashpad synonym add <word> <word...>   add a synonym group to this store (synonyms.json)
   stashpad duplicates [--json]         pairs of current memories that say almost the same
   stashpad merge <keep-id> <other-id...>   keep one, end the others (a person only; nothing is deleted)
   stashpad pin <id> | unpin <id> | pins   pin the few rules every session must see (a person only; at most 12)
@@ -440,6 +443,7 @@ function cmdSearch(io, dir, query, values) {
     io.stdout(JSON.stringify(results));
     return 0;
   }
+  if (results.length === 0) logMiss(dir, text);
   if (results.length === 0) {
     io.stdout(`No match for "${text}" among ${total} searched memories. Try other words, or run "stashpad list".`);
     return 0;
@@ -706,6 +710,24 @@ export async function run(argv, io = defaultIo()) {
         io.stdout(`${result.name}: ${result.memories.length} memory/memories`);
         for (const m of result.memories) io.stdout(`  ${m.id}  ${m.kind}  ${m.summary}`);
         if (result.related.length > 0) io.stdout(`Mentioned with: ${result.related.map((r) => `${r.name} (${r.together})`).join(", ")}`);
+        return 0;
+      }
+      case "misses": {
+        const rows = missReport(dir);
+        if (values.json) io.stdout(JSON.stringify(rows));
+        else if (rows.length === 0) io.stdout("No missed searches recorded.");
+        else {
+          for (const r of rows) {
+            const hint = r.close.length ? `  close: ${r.close.join(", ")}  ->  stashpad synonym add ${r.term} ${r.close[0]}` : "";
+            io.stdout(`${String(r.count).padStart(3)}x  ${r.term}${hint}`);
+          }
+        }
+        return 0;
+      }
+      case "synonym": {
+        if (id !== "add") return usageError(io, "use: stashpad synonym add <word> <word...>");
+        const done = addSynonyms(dir, positionals.slice(2));
+        io.stdout(`Added. ${done.groups} synonym group(s) in this store.`);
         return 0;
       }
       case "duplicates": {

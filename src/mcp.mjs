@@ -4,6 +4,7 @@ import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
 import { parseMemory } from "./memory-format.mjs";
 import { VERSION } from "./version.mjs";
 import { aboutEntity } from "./entities.mjs";
+import { logMiss } from "./misses.mjs";
 import {
   StoreError,
   listMemories,
@@ -163,6 +164,7 @@ function callTool(name, args, dir) {
           kinds: args.kind ? [String(args.kind)] : null,
           asOf: args.as_of ? String(args.as_of) : null,
         });
+        if (results.length === 0) logMiss(dir, String(args.query));
         return jsonResult({ label: DATA_LABEL, searched: total, results });
       }
       case "stashpad_get": {

@@ -29,7 +29,7 @@ function dataFiles(root) {
   for (const name of readdirSync(root)) {
     const path = join(root, name);
     if ((name.endsWith(".md") || name === "pins.json") && isFile(path)) files.push({ path, kind: "file" });
-    if ((name === "audit.jsonl" || name === "feedback.jsonl") && isFile(path)) files.push({ path, kind: "lines" });
+    if ((name === "audit.jsonl" || name === "feedback.jsonl" || name === "misses.jsonl") && isFile(path)) files.push({ path, kind: "lines" });
   }
   for (const sub of ["pending", "rejected", "sources", "handoffs"]) {
     const folder = join(root, sub);
