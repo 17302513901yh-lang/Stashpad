@@ -23,7 +23,7 @@ jobs:
       - name: Show failing tests as annotations
         if: failure()
         shell: bash
-        run: node --test 2>&1 | grep -E "^not ok|^# Subtest|error:|expected|actual" | head -40 | while IFS= read -r line; do echo "::error::${line}"; done
+        run: node scripts/ci-annotate.mjs
       - run: npm run build
       - name: Search benchmark
         run: npm run bench | tee bench-result.txt
