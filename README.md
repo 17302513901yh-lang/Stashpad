@@ -21,7 +21,7 @@ stashpad doctor --client        # starts the server the way your agent app does 
 
 Expected: `client start: the server answered with 8 tools in ... ms` and `Nothing is broken.`
 
-Claude Code users can install the plugin instead, which also adds the hooks below: `/plugin marketplace add laaielichter/stashpad`, then `/plugin install stashpad@stashpad`.
+Claude Code users can install the plugin instead, which also adds the hooks below: `/plugin marketplace add laaielichter/stashpad`, then `/plugin install stashpad@stashpad` (or `stashpad@reverseport` from the [ReversePort marketplace](#sister-tools)).
 
 ## Why Stashpad?
 
@@ -171,6 +171,19 @@ Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `sou
 **Can an agent write whatever it wants into memory?** No. Agent writes wait for a person (`stashpad review` or `stashpad ui`). Secrets, invisible characters and near-copies are refused, and everything recalled is labelled as data, not instructions.
 
 **My MCP client says the server failed.** Run `stashpad doctor --client`. It starts the server the way an agent app does and tells you what to fix.
+
+## Sister tools
+
+From the same author; local, open source, each with its own MCP server.
+
+- [**ReversePort**](https://github.com/laaielichter/reverseport): reverse engineer apps, games, binaries and websites and port them between Godot, Unity, Unreal, three.js
+  and languages. `re_case remember` proposes a proof case's findings to Stashpad's review queue
+  ([how](docs/HANDOFFS.md)).
+- [**agentdisk**](https://github.com/laaielichter/agentdisk): the disk report for coding agents. Finds the worktrees, checkpoints and dependency folders agents leave
+  behind and cleans up only what is safe, with undo.
+
+In Claude Code you can get all three from one marketplace: `/plugin marketplace add laaielichter/reverseport`,
+then `/plugin install reverseport@reverseport`, `stashpad@reverseport` or `agentdisk@reverseport`.
 
 ## Contributing and community
 
