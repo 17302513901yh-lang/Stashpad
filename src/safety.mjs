@@ -27,7 +27,7 @@ const SUBFOLDERS = ["pending", "rejected", "handoffs"];
 
 // Files in the top of a store that a snapshot keeps. Raw source copies in sources/ never change,
 // so snapshots leave them out.
-const isTopLevelData = (name) => name.endsWith(".md") || name === "audit.jsonl" || name === "feedback.jsonl" || name === "synonyms.json" || name === MARKER;
+const isTopLevelData = (name) => name.endsWith(".md") || name === "audit.jsonl" || name === "feedback.jsonl" || name === "synonyms.json" || name === "pins.json" || name === MARKER;
 
 function isRegularFile(path) {
   return existsSync(path) && lstatSync(path).isFile();

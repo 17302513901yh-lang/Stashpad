@@ -101,3 +101,27 @@ test("hooks never fail the agent: bad input, missing transcript, secrets", () =>
   const out = execFileSync(process.execPath, [join(root, "bin", "stashpad.mjs"), "hook", "prompt", "--dir", dir], { input: "not json", encoding: "utf8" });
   assert.equal(out, "");
 });
+
+test("pins are sealed with an encrypted store, survive decrypt, and are part of snapshots", async () => {
+  const { encryptStore, decryptStore } = await import("../src/encrypt.mjs");
+  const { createSnapshot, restoreSnapshot } = await import("../src/safety.mjs");
+  const { readFileSync } = await import("node:fs");
+  const dir = fresh();
+  put(dir, "rule", "Answer in plain words, short sentences.");
+  pinMemory(dir, "rule");
+  const snap = createSnapshot(dir, "pins");
+  unpinMemory(dir, "rule");
+  restoreSnapshot(dir, snap.name);
+  assert.deepEqual(readPins(dir), ["rule"]);
+  process.env.STASHPAD_PASSPHRASE = "a long enough passphrase";
+  try {
+    encryptStore(dir);
+    assert.ok(readFileSync(join(dir, "pins.json"), "utf8").startsWith("STASHPAD-SEALED-1:"));
+    assert.deepEqual(readPins(dir), ["rule"]);
+    decryptStore(dir);
+  } finally {
+    delete process.env.STASHPAD_PASSPHRASE;
+  }
+  assert.deepEqual(readPins(dir), ["rule"]);
+  assert.match(buildBrief(dir).text, /Pinned by a person/);
+});
