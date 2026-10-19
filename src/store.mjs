@@ -33,7 +33,7 @@ import { StoreError } from "./errors.mjs";
 import { moveFile, writeAtomic } from "./fsx.mjs";
 import { withStoreLock } from "./lock.mjs";
 import { keyFor, openLine, readData, sealFor, sealLine } from "./vault.mjs";
-import { gateReason, relatedTo } from "./gate.mjs";
+import { gateReason, relatedTo, similarity } from "./gate.mjs";
 import { autoSnapshot, prepareForWrite } from "./safety.mjs";
 
 export { StoreError };
@@ -345,6 +345,41 @@ function applyForget(dir, id, path) {
   writeAtomic(filePath(dir, request.target), sealFor(dir, renderMemory({ ...meta, valid_to: todayIso() }, body)));
   rmSync(path);
   appendAudit(dir, { action: "forgotten", id, target: request.target, reason: request.reason });
+}
+
+// Pairs of current memories that say almost the same thing, most alike first. Changes nothing.
+export function findDuplicates(dir, { threshold = 0.6, today = todayIso() } = {}) {
+  const current = readAll(dir).entries.filter((e) => isCurrent(e.meta, today));
+  const terms = current.map((e) => new Set(keyTerms(e.body)));
+  const pairs = [];
+  for (let i = 0; i < current.length; i += 1) {
+    for (let j = i + 1; j < current.length; j += 1) {
+      if (current[i].meta.kind !== current[j].meta.kind) continue;
+      const score = similarity(terms[i], terms[j]);
+      if (score >= threshold) pairs.push({ a: current[i].id, b: current[j].id, similarity: Math.round(score * 100) / 100 });
+    }
+  }
+  return pairs.sort((x, y) => y.similarity - x.similarity || x.a.localeCompare(y.a));
+}
+
+// A person keeps one memory and ends the others that say the same. Nothing is deleted: the ended
+// ones keep their history, and the audit log says which one they were merged into.
+function mergeMemoriesUnlocked(dir, keep, drop, today = todayIso()) {
+  const kept = parseMemory(readMemory(dir, keep).text);
+  if (!isCurrent(kept.meta, today)) throw new StoreError(`"${keep}" is not current; keep a current memory.`);
+  const ended = [];
+  for (const id of drop) {
+    if (id === keep) throw new StoreError("a memory cannot be merged into itself.");
+    const { meta, body } = parseMemory(readMemory(dir, id).text);
+    if (!isCurrent(meta, today)) throw new StoreError(`"${id}" is not current, so there is nothing to merge.`);
+    ended.push({ id, meta, body });
+  }
+  autoSnapshot(dir);
+  for (const { id, meta, body } of ended) {
+    writeAtomic(filePath(dir, id), sealFor(dir, renderMemory({ ...meta, valid_to: today }, body)));
+    appendAudit(dir, { action: "merged", id, target: keep, reason: `same as ${keep}` });
+  }
+  return { keep, ended: ended.map((e) => e.id) };
 }
 
 // Short fingerprint of a memory's text, kept in the audit log, so a later change to a file by hand
@@ -691,3 +726,4 @@ export const queueForget = (dir, ...args) => withStoreLock(dir, () => (keyFor(di
 export const acceptPending = (dir, ...args) => withStoreLock(dir, () => (keyFor(dir), acceptPendingUnlocked(dir, ...args)));
 export const confirmMemory = (dir, ...args) => withStoreLock(dir, () => (keyFor(dir), confirmMemoryUnlocked(dir, ...args)));
 export const rejectPending = (dir, ...args) => withStoreLock(dir, () => (keyFor(dir), rejectPendingUnlocked(dir, ...args)));
+export const mergeMemories = (dir, ...args) => withStoreLock(dir, () => (keyFor(dir), mergeMemoriesUnlocked(dir, ...args)));

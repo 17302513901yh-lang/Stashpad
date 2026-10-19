@@ -33,6 +33,8 @@ import { openInBrowser, startUi } from "./ui.mjs";
 import {
   StoreError,
   acceptPending,
+  findDuplicates,
+  mergeMemories,
   confirmMemory,
   historyOf,
   listMemories,
@@ -58,6 +60,8 @@ export const USAGE = `Usage:
                --since YYYY-MM-DD  --until YYYY-MM-DD (on valid_from)
   stashpad entities [--limit N] [--json]  names, tools and files the memories talk about, most mentioned first
   stashpad about <name...> [--json]       the memories about one of them, and what is mentioned with it
+  stashpad duplicates [--json]         pairs of current memories that say almost the same
+  stashpad merge <keep-id> <other-id...>   keep one, end the others (a person only; nothing is deleted)
   stashpad pin <id> | unpin <id> | pins   pin the few rules every session must see (a person only; at most 12)
   stashpad recall <words...> [--json]     the memories that clearly match a request (what the prompt hook adds)
   stashpad hook <session-start|prompt|pre-compact|session-end>   for agent hooks: reads the event JSON on stdin, never fails
@@ -702,6 +706,23 @@ export async function run(argv, io = defaultIo()) {
         io.stdout(`${result.name}: ${result.memories.length} memory/memories`);
         for (const m of result.memories) io.stdout(`  ${m.id}  ${m.kind}  ${m.summary}`);
         if (result.related.length > 0) io.stdout(`Mentioned with: ${result.related.map((r) => `${r.name} (${r.together})`).join(", ")}`);
+        return 0;
+      }
+      case "duplicates": {
+        const pairs = findDuplicates(dir);
+        if (values.json) io.stdout(JSON.stringify(pairs));
+        else if (pairs.length === 0) io.stdout("No near-duplicates among the current memories.");
+        else {
+          for (const p of pairs) io.stdout(`${p.similarity}  ${p.a}  ${p.b}`);
+          io.stdout("Keep one with: stashpad merge <keep-id> <other-id>");
+        }
+        return 0;
+      }
+      case "merge": {
+        const drop = positionals.slice(2);
+        if (!id || drop.length === 0) return usageError(io, "merge needs the id to keep and at least one to end, for example: stashpad merge db-choice db-choice-copy");
+        const done = mergeMemories(dir, id, drop);
+        io.stdout(`Kept ${done.keep}; ended ${done.ended.join(", ")}. Their history stays in the store.`);
         return 0;
       }
       case "pin":

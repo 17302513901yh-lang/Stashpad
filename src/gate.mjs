@@ -6,7 +6,7 @@ import { keyTerms } from "./search.mjs";
 export const MIN_WORDS = 3;
 export const DUPLICATE_SIMILARITY = 0.8;
 
-function similarity(a, b) {
+export function similarity(a, b) {
   if (a.size === 0 || b.size === 0) return 0;
   let shared = 0;
   for (const term of a) if (b.has(term)) shared += 1;
