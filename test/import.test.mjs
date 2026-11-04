@@ -61,3 +61,24 @@ test("CLI: import reads a file and reports how many are queued", async () => {
   assert.match(out[0], /Queued 2 memories for review/);
   assert.equal(listPending(join(dir, "store")).rows.length, 2);
 });
+
+test("CLI: import --format jsonl reads JSON Lines from a .txt file", async () => {
+  const dir = fresh();
+  const file = join(dir, "export.txt");
+  writeFileSync(file, '{"id":"j-one","kind":"fact","text":"A JSON Lines fact."}');
+  const out = [];
+  const io = { stdout: (s) => out.push(s), stderr: () => {}, env: {}, cwd: dir, readStdin: async () => "" };
+  assert.equal(await run(["import", file, "--format", "jsonl", "--dir", join(dir, "store")], io), 0);
+  assert.match(out[0], /Queued 1 memories for review/);
+  assert.equal(listPending(join(dir, "store")).rows[0].id, "j-one");
+});
+
+test("CLI: import --format rejects an unknown format", async () => {
+  const dir = fresh();
+  const file = join(dir, "export.txt");
+  writeFileSync(file, "A fact.");
+  const err = [];
+  const io = { stdout: () => {}, stderr: (s) => err.push(s), env: {}, cwd: dir, readStdin: async () => "" };
+  assert.equal(await run(["import", file, "--format", "yaml", "--dir", join(dir, "store")], io), 1);
+  assert.match(err[0], /unknown format "yaml"/);
+});

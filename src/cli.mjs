@@ -134,6 +134,7 @@ const OPTIONS = {
   supersedes: { type: "string" },
   reason: { type: "string" },
   "source-file": { type: "string" },
+  format: { type: "string" },
   out: { type: "string" },
   port: { type: "string" },
   open: { type: "boolean" },
