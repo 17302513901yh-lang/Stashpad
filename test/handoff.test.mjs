@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "../src/cli.mjs";
@@ -9,7 +9,8 @@ import { giveFeedback, lint } from "../src/feedback.mjs";
 import { buildBrief } from "../src/brief.mjs";
 import { handleMessage } from "../src/mcp.mjs";
 import { encryptStore } from "../src/encrypt.mjs";
-import { listPending, saveMemory } from "../src/store.mjs";
+import { filePath, listPending, saveMemory } from "../src/store.mjs";
+import { pinMemory, readPins } from "../src/pins.mjs";
 
 const fresh = () => join(mkdtempSync(join(tmpdir(), "stashpad-handoff-")), "s");
 const at = (iso) => new Date(iso);
@@ -112,6 +113,28 @@ test("feedback: stale shows in lint, wrong queues an ending request, helpful cle
   assert.match((await cli(dir, "lint")).out, /marked-wrong\s+port-choice/);
   const mcp = handleMessage({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "stashpad_feedback", arguments: { id: "db-choice", signal: "stale" } } }, { dir }).result;
   assert.equal(JSON.parse(mcp.content[0].text).recorded, true);
+});
+
+test("lint reports a pin that ended and changes nothing", () => {
+  const dir = fresh();
+  saveMemory(dir, { id: "no-force", kind: "decision", text: "Never force-push to main.", sourceType: "user", sourceRef: "test" });
+  pinMemory(dir, "no-force");
+  saveMemory(dir, { id: "no-force-2", kind: "decision", text: "Force-push only with a lease now.", sourceType: "user", sourceRef: "test", supersedes: "no-force" });
+  const found = lint(dir).findings.filter((f) => f.rule.startsWith("pin-"));
+  assert.deepEqual(found.map((f) => [f.rule, f.id]), [["pin-ended", "no-force"]]);
+  assert.match(found[0].message, /stashpad unpin no-force/);
+  assert.deepEqual(readPins(dir), ["no-force"], "lint does not unpin");
+});
+
+test("lint reports a pin whose memory file is gone and changes nothing", () => {
+  const dir = fresh();
+  saveMemory(dir, { id: "gone", kind: "fact", text: "The old build server is at build-1.", sourceType: "user", sourceRef: "test" });
+  pinMemory(dir, "gone");
+  rmSync(filePath(dir, "gone"));
+  const found = lint(dir).findings.filter((f) => f.rule.startsWith("pin-"));
+  assert.deepEqual(found.map((f) => [f.rule, f.id]), [["pin-missing", "gone"]]);
+  assert.match(found[0].message, /stashpad unpin gone/);
+  assert.deepEqual(readPins(dir), ["gone"], "lint does not unpin");
 });
 
 test("save --expires ends a memory on that date and lint warns before it", async () => {

@@ -12,6 +12,7 @@ import { keyFor, openLine, readData, sealLine } from "./vault.mjs";
 import { findInstructionLikeText } from "./security.mjs";
 import { isCurrent, queueForget, readEntries, readMemory, staleMemories, todayIso } from "./store.mjs";
 import { listHandoffs } from "./handoff.mjs";
+import { readPins } from "./pins.mjs";
 
 export const SIGNALS = ["helpful", "stale", "wrong"];
 const FEEDBACK = "feedback.jsonl";
@@ -82,6 +83,18 @@ export function lint(dir, { today = todayIso(), staleDays = 180, soonDays = 14, 
   for (const e of entries) {
     if (e.meta.supersedes && !byId.has(e.meta.supersedes)) add("broken-link", e.id, `supersedes ${e.meta.supersedes}, which is not in the store.`);
     if (e.meta.superseded_by && !byId.has(e.meta.superseded_by)) add("broken-link", e.id, `superseded_by ${e.meta.superseded_by}, which is not in the store.`);
+  }
+  // A pin that no longer reaches the agent still takes one of the pin slots, so say so.
+  let pins = [];
+  try {
+    pins = readPins(dir);
+  } catch {
+    // pins are optional here, as handoffs are below
+  }
+  for (const id of pins) {
+    const entry = byId.get(id);
+    if (!entry) add("pin-missing", id, `pinned, but no memory file has this id: stashpad unpin ${id}.`);
+    else if (!isCurrent(entry.meta, today)) add("pin-ended", id, `pinned, but no longer current, so the brief skips it: stashpad unpin ${id}.`);
   }
   try {
     for (const h of listHandoffs(dir, { all: true, now }).handoffs) if (h.unread_past_expiry) add("handoff-expired", h.id, "handoff passed its expiry unread; the work it describes may still be open.");

@@ -37,8 +37,9 @@ stashpad lint
 counts. `wrong` also queues an ending request, which a person accepts like any other. Agents use `stashpad_feedback`.
 
 `stashpad lint` lists what deserves a look, by rules only: memories marked stale or wrong, agent memories nobody
-confirmed for 180 days, memories that end within 14 days, broken supersede links, text that reads like an order, and
-handoffs that passed their expiry unread. It changes nothing.
+confirmed for 180 days, memories that end within 14 days, broken supersede links, text that reads like an order,
+handoffs that passed their expiry unread, pinned memories that are no longer current (`pin-ended`), and pins whose
+memory file is gone (`pin-missing`). Each pin rule names the fix, `stashpad unpin <id>`. It changes nothing.
 
 ## Expiry
 
