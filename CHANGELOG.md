@@ -1,15 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- **`stashpad lint` reports pins that no longer work:** `pin-ended` for a pinned memory that is no longer current, and `pin-missing` for a pin without a memory file, each with the fix (#18).
-- **The tool count can't go stale:** the `AGENTS.md` block from `sync-agents` takes it from the server's tool list, the skill lists `stashpad_about`, and a test checks that every tool is in the skill (#19).
-
-### Thanks
-
-- @jay23606 for the pin lint rules (#18).
-- @harshitNegi0001 for the tool count and the skill check (#19).
-
 ## 0.3.0
 
 Built from a count of the problems people report most with agent memory tools (installs that fail, context lost after compaction, rules the agent stops following, a separate empty store per folder).
@@ -22,6 +12,12 @@ Built from a count of the problems people report most with agent memory tools (i
 - **Global store.** `--global` for what is true in every project; its pinned rules and matches are added by the hooks.
 - **Smaller fixes.** Search in Chinese, Japanese and Korean (character bigrams). Missed searches are logged by word with synonym suggestions (`stashpad misses`, `stashpad synonym add`). `stashpad duplicates` and `stashpad merge` for near-copies. The brief and doctor warn before the review queue is full.
 - **Repository.** Contributing guide, code of conduct, security policy, issue forms, a release workflow and a real terminal demo in the README.
+- **`stashpad lint` reports pins that no longer work:** `pin-ended` for a pinned memory that is no longer current, and `pin-missing` for a pin without a memory file, each with the fix (#18).
+- **The tool count can't go stale:** the `AGENTS.md` block from `sync-agents` takes it from the server's tool list, the skill lists `stashpad_about`, and a test checks that every tool is in the skill (#19).
+
+### Thanks
+- @jay23606 for the pin lint rules (#18).
+- @harshitNegi0001 for the tool count and the skill check (#19).
 
 ## 0.2.2
 
