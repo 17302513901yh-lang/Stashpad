@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { run } from "../src/cli.mjs";
 import { saveMemory } from "../src/store.mjs";
 import { VERSION } from "../src/version.mjs";
+import {TOOLS} from '../src/mcp.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const json = (path) => JSON.parse(readFileSync(join(root, path), "utf8"));
@@ -68,4 +69,11 @@ test("server.json for the MCP registry matches the package", () => {
   assert.equal(server.packages[0].identifier, pkg.name);
   assert.equal(server.packages[0].version, pkg.version);
   assert.ok(server.description.length <= 100);
+});
+
+test("every tool in TOOLS is documented in SKILL.md", () => {
+  const skillText = readFileSync(join(root, "skills", "stashpad", "SKILL.md"), "utf8");
+  for (const tool of TOOLS) {
+    assert.ok(skillText.includes(tool.name), `SKILL.md is missing documentation for tool: ${tool.name}`);
+  }
 });

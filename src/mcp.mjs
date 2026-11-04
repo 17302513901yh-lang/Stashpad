@@ -1,5 +1,5 @@
 // MCP server for Stashpad over stdio (newline-delimited JSON-RPC). No dependencies.
-// Agents only get six tools. Anything an agent writes waits for a person to accept it.
+// Agents get the following tools. Anything an agent writes waits for a person to accept it.
 import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
 import { parseMemory } from "./memory-format.mjs";
 import { VERSION } from "./version.mjs";

@@ -71,6 +71,8 @@ test("sync-agents adds, updates and keeps the text around its block", async () =
   assert.match(text, /# Project rules\n\nUse tabs\./);
   assert.match(text, /fact-a/);
   assert.equal(text.split("stashpad:start").length, 2);
+  assert.doesNotMatch(text, /six stashpad/);
+  assert.match(text, /\d+ stashpad_\* tools/);
 
   const h = harness();
   assert.equal(await run(["sync-agents", file, "--dir", dir], h.io), 0);
