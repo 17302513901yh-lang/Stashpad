@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Missed searches are counted for `stashpad search --json` too**, so `stashpad misses` sees the searches agents make on the command line (#20).
+
+### Thanks
+
+- @jay23606 for logging JSON search misses (#20).
+
 ## 0.3.0
 
 Built from a count of the problems people report most with agent memory tools (installs that fail, context lost after compaction, rules the agent stops following, a separate empty store per folder).
