@@ -19,6 +19,10 @@ test("missed searches are logged by word, with close words, and a synonym fixes 
   const out = [];
   await run(["search", "postgresql", "--dir", dir], io(out));
   await run(["search", "postgresql setup", "--dir", dir], io(out));
+  const jsonOut = [];
+  await run(["search", "jsonmiss", "--json", "--dir", dir], io(jsonOut));
+  assert.equal(jsonOut.join(""), "[]");
+  assert.equal(missReport(dir).find((row) => row.term === "jsonmiss")?.count, 1);
   handleMessage({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "stashpad_search", arguments: { query: "postgresql" } } }, { dir });
   const [top] = missReport(dir);
   assert.equal(top.term, "postgresql");

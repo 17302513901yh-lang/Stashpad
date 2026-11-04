@@ -439,11 +439,11 @@ function cmdSearch(io, dir, query, values) {
     io.stderr(`skipped ${item.file}: ${item.reason}`);
   }
 
+  if (results.length === 0) logMiss(dir, text);
   if (values.json) {
     io.stdout(JSON.stringify(results));
     return 0;
   }
-  if (results.length === 0) logMiss(dir, text);
   if (results.length === 0) {
     io.stdout(`No match for "${text}" among ${total} searched memories. Try other words, or run "stashpad list".`);
     return 0;
