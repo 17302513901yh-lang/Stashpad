@@ -9,7 +9,8 @@ import { createHandoff } from "./handoff.mjs";
 import { recall } from "./recall.mjs";
 import { readPins } from "./pins.mjs";
 import { fence, redactSecrets } from "./security.mjs";
-import { givenIds, updateSession } from "./sessions.mjs";
+import { givenIds, listSessions, sessionKey, updateSession } from "./sessions.mjs";
+import { gitStatus } from "./git.mjs";
 import { logShown } from "./shown.mjs";
 import { existsSync as exists } from "node:fs";
 import { resolve } from "node:path";
@@ -126,23 +127,57 @@ function clip(text, max) {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
+const MAX_UNCOMMITTED = 10;
+
 // The note's text, with secrets masked (before anything is cut short, so a cut cannot split one), or
-// null when there is nothing to say. Returns { text, redacted }.
-export function handoffText(summary, reason) {
+// null when there is nothing to say. Returns { text, redacted, branch }.
+//   git:     { branch, files } from git status, or null
+//   unclean: the time the previous session was last active, when it never reached the session end
+export function handoffText(summary, reason, { git = null, unclean = null } = {}) {
   let redacted = 0;
   const mask = (text) => {
     const r = redactSecrets(text);
     redacted += r.count;
     return r.text;
   };
-  const parts = [`Automatic note at ${reason}. It records what was going on; check the code and git status before acting on it.`];
-  const asks = summary.asks.map(mask);
-  const files = summary.files.map(mask);
-  if (asks.length === 0 && files.length === 0) return null;
+  const asks = (summary?.asks ?? []).map(mask);
+  const files = (summary?.files ?? []).map(mask);
+  const open = (git?.files ?? []).map(mask);
+  if (asks.length === 0 && files.length === 0 && unclean === null) return null;
+  const parts = unclean
+    ? [`Automatic note: the previous session (last active ${String(unclean).slice(0, 16).replace("T", " ")} UTC) did not end cleanly; no session end was recorded. It may have crashed or been closed, or it may still be running in another window. Treat its work as unfinished; check the code and git status before acting on it.`]
+    : [`Automatic note at ${reason}. It records what was going on; check the code and git status before acting on it.`];
   if (asks.length) parts.push(`Last requests: ${asks.map((a, i) => `(${i + 1}) ${clip(a, 220)}`).join(" ")}`);
   if (files.length) parts.push(`Files written: ${files.join(", ")}`);
+  if (git?.branch) parts.push(`Branch: ${mask(git.branch)}`);
+  if (open.length) parts.push(`Uncommitted: ${open.slice(0, MAX_UNCOMMITTED).join(", ")}${open.length > MAX_UNCOMMITTED ? ` (+${open.length - MAX_UNCOMMITTED} more)` : ""}`);
   if (redacted) parts.push(`${redacted} secret(s) masked as [REDACTED].`);
-  return { text: parts.join("\n"), redacted };
+  return { text: parts.join("\n"), redacted, branch: git?.branch ?? null };
+}
+
+// A session that wrote prompts but never reached the session end (crashed, killed, closed without
+// the hook): the next session start leaves an automatic handoff about it, once.
+function noteUncleanEnd(dir, input) {
+  try {
+    const me = sessionKey(input.session_id);
+    if (!me) return;
+    const previous = listSessions(dir).find((s) => s.session !== me && (s.prompts ?? 0) > 0 && !s.ended_at && !s.unclean_noted);
+    if (!previous) return;
+    updateSession(dir, previous.session, (s) => (s.unclean_noted = new Date().toISOString()));
+    const summary = typeof previous.transcript_path === "string" ? summarizeTranscript(previous.transcript_path, { cwd: previous.cwd ?? null }) : null;
+    const where = typeof previous.cwd === "string" && existsSync(previous.cwd) ? previous.cwd : null;
+    const written = handoffText(summary, "an unclean end", { git: where ? gitStatus(where) : null, unclean: previous.updated_at });
+    createHandoff(dir, { text: written.text, origin: "auto", from: "hook", redacted: written.redacted, branch: written.branch });
+  } catch {
+    // never break the session start
+  }
+}
+
+// Where the session's transcript and working folder are, for noteUncleanEnd (local paths, kept in
+// the git-ignored session file only).
+function remember(state, input) {
+  if (typeof input.transcript_path === "string" && isAbsolute(input.transcript_path) && input.transcript_path.length < 1000) state.transcript_path = input.transcript_path;
+  if (typeof input.cwd === "string" && isAbsolute(input.cwd) && input.cwd.length < 1000) state.cwd = input.cwd;
 }
 
 // Session state is a convenience: when it cannot be read or written (an encrypted store without
@@ -178,9 +213,11 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
     switch (event) {
       case "session-start": {
         // Compaction or /clear drops what the prompt hook gave earlier, so it may be given again.
+        if (input.source !== "compact") noteUncleanEnd(dir, input);
         note(dir, input, (s) => {
           if (input.source === "compact" || input.source === "clear") s.given = [];
           s.source = typeof input.source === "string" ? input.source.slice(0, 20) : null;
+          remember(s, input);
         });
         if (global) note(global, input, (s) => {
           if (input.source === "compact" || input.source === "clear") s.given = [];
@@ -205,7 +242,10 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
       case "prompt": {
         // Memories this session already got from this hook are not pasted again.
         const local = recall(dir, input.prompt ?? "", { exclude: [...readPins(dir), ...safeGiven(dir, input)], cwd });
-        note(dir, input, (s) => given(s, local.hits));
+        note(dir, input, (s) => {
+          given(s, local.hits);
+          remember(s, input);
+        });
         const shown = (store, result, out) => {
           if (result.hits.length) logShown(store, { event: "prompt", ids: result.hits, chars: out, session: input.session_id });
         };
@@ -228,10 +268,10 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
         const summary = summarizeTranscript(input.transcript_path, { cwd: input.cwd ?? null });
         if (!summary) return "";
         const reason = event === "pre-compact" ? `compaction (${input.trigger ?? "auto"})` : "the end of a session";
-        const written = handoffText(summary, reason);
+        const written = handoffText(summary, reason, { git: gitStatus(cwd) });
         if (!written) return "";
         try {
-          createHandoff(dir, { text: written.text, origin: "auto", from: "hook", redacted: written.redacted });
+          createHandoff(dir, { text: written.text, origin: "auto", from: "hook", redacted: written.redacted, branch: written.branch });
         } catch {
           // a refused note (for example one over the size limit) must not break the agent
         }

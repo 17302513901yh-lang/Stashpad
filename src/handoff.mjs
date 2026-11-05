@@ -58,7 +58,7 @@ export function stateOf(record, now = new Date()) {
   return record.state;
 }
 
-const view = (r, now) => ({ id: r.id, state: stateOf(r, now), unread_past_expiry: r.state === "open" && stateOf(r, now) === "expired", origin: r.origin, from: r.from ?? null, created_at: r.created_at, expires_at: r.expires_at, preview: r.text.replace(/\s+/g, " ").slice(0, 120), ...(r.claimed_by ? { claimed_by: r.claimed_by, claimed_at: r.claimed_at } : {}) });
+const view = (r, now) => ({ id: r.id, state: stateOf(r, now), unread_past_expiry: r.state === "open" && stateOf(r, now) === "expired", origin: r.origin, from: r.from ?? null, branch: r.branch ?? null, created_at: r.created_at, expires_at: r.expires_at, preview: r.text.replace(/\s+/g, " ").slice(0, 120), ...(r.claimed_by ? { claimed_by: r.claimed_by, claimed_at: r.claimed_at } : {}) });
 
 // Manual before auto, then newest first.
 const order = (a, b) => (a.origin === b.origin ? b.created_at.localeCompare(a.created_at) : a.origin === "manual" ? -1 : 1);
@@ -71,13 +71,22 @@ function checkText(text) {
   if (secrets.length > 0) throw new StoreError(`handoff not saved: this looks like a secret (${secrets.join(", ")}). Remove it.`);
 }
 
+// A git branch name, as git allows it, or nothing. Anything else is refused.
+function checkBranch(branch) {
+  if (branch === null || branch === undefined) return false;
+  if (typeof branch !== "string" || branch.length > 200 || !/^[^\s\u0000-\u001f\u007f~^:?*[\\]+$/.test(branch) || branch.includes("..") || findSecrets(branch).length > 0) {
+    throw new StoreError("branch must be a git branch name (no spaces, at most 200 characters).");
+  }
+  return true;
+}
+
 function checkName(name, what) {
   if (name === undefined || name === null) return null;
   if (!NAME.test(name)) throw new StoreError(`${what} must be 1 to 40 letters, digits, spaces, dots, dashes or underscores.`);
   return name;
 }
 
-export function createHandoff(dir, { text, origin = "manual", from = null, expiresDays = DEFAULT_EXPIRES_DAYS, redacted = 0, now = new Date() }) {
+export function createHandoff(dir, { text, origin = "manual", from = null, expiresDays = DEFAULT_EXPIRES_DAYS, redacted = 0, branch = null, now = new Date() }) {
   return withStoreLock(dir, () => {
     keyFor(dir);
     prepareForWrite(dir);
@@ -90,6 +99,7 @@ export function createHandoff(dir, { text, origin = "manual", from = null, expir
       created_at: now.toISOString(), expires_at: new Date(now.getTime() + expiresDays * 86400000).toISOString(),
       flagged: findInstructionLikeText(text) ? "reads like an instruction" : null,
       ...(Number.isInteger(redacted) && redacted > 0 ? { redacted } : {}),
+      ...(checkBranch(branch) ? { branch } : {}),
     };
     const replaced = [];
     if (origin === "auto") {
@@ -124,7 +134,7 @@ export function claimHandoff(dir, { id = null, by = null, now = new Date() } = {
     if (state !== "open") throw new StoreError(`handoff ${record.id} is ${state}${record.claimed_by ? ` (taken by ${record.claimed_by})` : ""}; it can be read only once.`);
     write(dir, { ...record, state: "claimed", claimed_at: now.toISOString(), claimed_by: by ?? "unnamed session" });
     audit(dir, { action: "handoff-claim", id: record.id, by: by ?? null });
-    return { claimed: true, label: DATA_LABEL, id: record.id, origin: record.origin, from: record.from ?? null, created_at: record.created_at, flagged: record.flagged ?? null, text: record.text, others_open: open.length - (open.includes(record) ? 1 : 0) };
+    return { claimed: true, label: DATA_LABEL, id: record.id, origin: record.origin, from: record.from ?? null, branch: record.branch ?? null, created_at: record.created_at, flagged: record.flagged ?? null, text: record.text, others_open: open.length - (open.includes(record) ? 1 : 0) };
   });
 }
 

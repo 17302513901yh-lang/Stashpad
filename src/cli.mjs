@@ -92,7 +92,7 @@ export const USAGE = `Usage:
   stashpad doctor [--client] [--json]  check that Stashpad and the store are healthy, with a fix for each problem
   stashpad brief [--max-chars N] [--json]   short plain-text summary for the start of a session (any agent can read it)
   stashpad handover --text "<what the next session needs>" [--source-type user|agent]   leave a note for the next session
-  stashpad handoff leave --text "<where I stopped, what is next>" [--from <agent>] [--auto] [--expires-days N]
+  stashpad handoff leave --text "<where I stopped, what is next>" [--from <agent>] [--branch <name>] [--auto] [--expires-days N]
   stashpad handoff list [--all] [--json]   open handoffs (listing never takes one)
   stashpad handoff claim [<id>] [--by <agent>] [--json]   take one handoff, exactly once (a person's notes first)
   stashpad handoff cancel <id> [--reason "<why>"]
@@ -171,6 +171,7 @@ const OPTIONS = {
   files: { type: "string" },
   changed: { type: "boolean" },
   session: { type: "string" },
+  branch: { type: "string" },
   today: { type: "boolean" },
   clear: { type: "boolean" },
   yes: { type: "boolean" },
@@ -645,7 +646,7 @@ async function cmdHandoff(io, dir, [action, id], values) {
     if (values.text === undefined) return usageError(io, 'handoff leave needs --text, for example: stashpad handoff leave --text "Parser half done; next: tests."');
     const text = values.text === "-" ? await io.readStdin() : values.text;
     const days = values["expires-days"] === undefined ? undefined : Number(values["expires-days"]);
-    const r = createHandoff(dir, { text, origin: values.auto ? "auto" : "manual", from: values.from ?? null, ...(days === undefined ? {} : { expiresDays: days }) });
+    const r = createHandoff(dir, { text, origin: values.auto ? "auto" : "manual", from: values.from ?? null, branch: values.branch ?? null, ...(days === undefined ? {} : { expiresDays: days }) });
     if (values.json) io.stdout(JSON.stringify(r));
     else io.stdout(`Left handoff ${r.id} (${r.origin}, expires ${r.expires_at.slice(0, 10)}). The next session takes it with: stashpad handoff claim${r.replaced.length ? `\nIt replaces ${r.replaced.join(", ")}.` : ""}`);
     return 0;
@@ -654,7 +655,7 @@ async function cmdHandoff(io, dir, [action, id], values) {
     const r = listHandoffs(dir, { all: values.all === true });
     if (values.json) io.stdout(JSON.stringify(r));
     else if (r.handoffs.length === 0) io.stdout(values.all ? "No handoffs." : "No open handoffs.");
-    else for (const h of r.handoffs) io.stdout(`${h.id}  ${h.state}  ${h.origin}${h.from ? ` from ${h.from}` : ""}  ${h.preview}`);
+    else for (const h of r.handoffs) io.stdout(`${h.id}  ${h.state}  ${h.origin}${h.from ? ` from ${h.from}` : ""}${h.branch ? ` on ${h.branch}` : ""}  ${defuse(h.preview)}`);
     return 0;
   }
   if (action === "claim") {
@@ -662,7 +663,7 @@ async function cmdHandoff(io, dir, [action, id], values) {
     if (values.json) io.stdout(JSON.stringify(defuseValues(r)));
     else if (!r.claimed) io.stdout(r.reason);
     else {
-      const head = `Handoff ${r.id} (${r.origin}${r.from ? ` from ${r.from}` : ""}, ${r.created_at.slice(0, 16).replace("T", " ")} UTC)${r.flagged ? ` [check: ${r.flagged}]` : ""}:`;
+      const head = `Handoff ${r.id} (${r.origin}${r.from ? ` from ${r.from}` : ""}${r.branch ? `, branch ${r.branch}` : ""}, ${r.created_at.slice(0, 16).replace("T", " ")} UTC)${r.flagged ? ` [check: ${r.flagged}]` : ""}:`;
       io.stdout(fence(`${r.label}\n${head}\n${r.text}`));
       if (r.others_open > 0) io.stdout(`${r.others_open} more open: stashpad handoff list`);
     }

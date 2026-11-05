@@ -6,6 +6,7 @@ import { DATA_LABEL, MAX_WAITING, fence, findInstructionLikeText } from "./secur
 import { isCurrent, listPending, readEntries, todayIso } from "./store.mjs";
 import { openHandoffSummary } from "./handoff.mjs";
 import { readPins } from "./pins.mjs";
+import { currentBranch } from "./git.mjs";
 import { anchorContext, anchorNote, checkAnchors, projectRoot, readAnchors } from "./anchors.mjs";
 import { TOOLS} from './mcp.mjs';
 
@@ -80,7 +81,10 @@ export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayI
 
   const headBase = `${DATA_LABEL}\nStashpad brief: ${current.length} current memories. Full text: stashpad get <id>, or search with stashpad search <words>.`;
   const handoff = openHandoffSummary(dir);
-  const head = handoff ? `${headBase}\nOpen handoff${handoff.count > 1 ? `s: ${handoff.count}, first` : ''}${handoff.first.from ? ` from ${handoff.first.from}` : ''}: take it once with stashpad handoff claim (or stashpad_handoff action claim).` : headBase;
+  // A handoff written on another branch than the one checked out now is worth a word.
+  const here = handoff?.first.branch ? currentBranch(cwd) : null;
+  const branchNote = handoff?.first.branch ? (here && here !== handoff.first.branch ? ` (left on branch ${handoff.first.branch}; you are on ${here})` : ` (on branch ${handoff.first.branch})`) : "";
+  const head = handoff ? `${headBase}\nOpen handoff${handoff.count > 1 ? `s: ${handoff.count}, first` : ''}${handoff.first.from ? ` from ${handoff.first.from}` : ''}${branchNote}: take it once with stashpad handoff claim (or stashpad_handoff action claim).` : headBase;
   const tailParts = [];
   if (waiting >= MAX_WAITING * 0.8) {
     tailParts.push(`Review queue almost full: ${waiting} of ${MAX_WAITING}. New agent notes are refused when it is full; ask the user to run stashpad review.`);

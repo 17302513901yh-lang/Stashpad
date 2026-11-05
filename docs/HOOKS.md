@@ -4,9 +4,9 @@ The two most reported memory problems with coding agents are context lost after 
 
 | Command | When | What it does |
 |---|---|---|
-| `stashpad hook session-start` | a session starts, and again right after compaction | prints the brief: pinned rules first, then the newest memories, and whether a handoff waits |
+| `stashpad hook session-start` | a session starts, and again right after compaction | prints the brief: pinned rules first, then the newest memories, and whether a handoff waits; notices when the last session never reached its end |
 | `stashpad hook prompt` | every prompt | adds the up to 3 memories that clearly match the request (at least two shared words), or nothing |
-| `stashpad hook pre-compact` | before compaction | leaves an automatic handoff: the last requests and the files written |
+| `stashpad hook pre-compact` | before compaction | leaves an automatic handoff: the last requests, the files written, the branch and the uncommitted files |
 | `stashpad hook session-end` | the session ends | the same automatic handoff |
 
 Everything the hooks print from memory comes inside one data block that opens with the data label:

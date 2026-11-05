@@ -24,6 +24,20 @@ stashpad handoff cancel <id> --reason "already done"
 - **Storage:** one JSON file per handoff in `<store>/handoffs/`, sealed when the store is encrypted.
 - **Agents:** the MCP tool `stashpad_handoff` (action `list`, `claim` or `leave`). Notes an agent leaves are `auto`.
 
+### The automatic handoff from the hooks
+
+Before compaction and at the end of a session, the hooks leave an `auto` handoff with the last three requests, the
+files written, the git branch and the files that are not committed yet (up to 10, then a count). When a session never
+reaches its end (it crashed, was killed, or the window was closed before the hook ran), the next session start leaves
+a note that says so, built from that session's transcript, so the work is treated as unfinished. It says it may also
+still be running in another window, and it is written once per such session.
+
+`git status` runs with the repository's `core.fsmonitor` switched off (a repository's config cannot make Stashpad
+start a program), without taking the index lock, from an absolute path to git, and with a 2 second limit; without git
+the note simply has no branch or file list. The branch is read from `.git/HEAD`. A handoff can carry a branch by
+hand too: `stashpad handoff leave --text "…" --branch feature/login`. When the open handoff was left on another
+branch than the one checked out, the brief says so.
+
 The idea follows ai-memory's typed handoffs (akitaonrails/ai-memory, MIT); Stashpad's version is its own and smaller.
 
 ## Feedback and lint
