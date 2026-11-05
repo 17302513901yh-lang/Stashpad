@@ -73,7 +73,7 @@ export const USAGE = `Usage:
   stashpad review [--json]
   stashpad accept <id>
   stashpad reject <id> [--reason "<why>"]
-  stashpad audit [--json]
+  stashpad audit [<id>] [--limit N] [--json]
   stashpad import <file> [--format jsonl|text] [--source-ref "<source>"]   queue memories from an export
   stashpad export [--all] [--out <file>]   write memories as JSON Lines (current only; --all adds ended ones)
   stashpad eval [--json]       run the fixed checks and baselines in a temporary store
@@ -113,7 +113,7 @@ Options:
   --source-file <path> keep a copy of the raw source in the store (up to 5 MB), linked from source_ref
   --out <file>        write the export to a file instead of the screen (refuses to overwrite)
   --reason "<why>"    why a waiting memory was rejected (kept in the audit log)
-  --limit N           most results to show for search (default 10)
+  --limit N           maximum results for search (default 10) or audit (default 50)
   --all               include memories that have ended
   --json              print machine-readable output
   --label <name>      name part of a snapshot
@@ -327,8 +327,16 @@ function cmdExport(io, dir, values) {
   return 0;
 }
 
-function cmdAudit(io, dir, values) {
-  const entries = readAudit(dir);
+function cmdAudit(io, dir, id, values) {
+  const limitText = values.limit;
+  const limit = limitText === undefined ? 50 : Number(limitText);
+  if (
+    (limitText !== undefined && !/^[0-9]+$/.test(limitText)) ||
+    !Number.isInteger(limit) || limit < 1 || limit > 10000
+  ) {
+    return usageError(io, "audit --limit must be a whole number from 1 to 10000");
+  }
+  const entries = readAudit(dir, limit, id);
   if (values.json) {
     io.stdout(JSON.stringify(entries));
     return 0;
@@ -866,7 +874,8 @@ export async function run(argv, io = defaultIo()) {
       case "ui":
         return await cmdUi(io, dir, values);
       case "audit":
-        return cmdAudit(io, dir, values);
+        if (positionals.length > 2) return usageError(io, "audit accepts at most one memory id");
+        return cmdAudit(io, dir, id, values);
       case "history":
         if (!id) return usageError(io, "history needs an id, for example: stashpad history db-choice-v2");
         return cmdHistory(io, dir, id, values);

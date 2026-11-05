@@ -96,12 +96,17 @@ function appendAudit(dir, entry) {
   appendFileSync(join(dir, AUDIT), `${sealLine(dir, JSON.stringify({ at: new Date().toISOString(), ...entry }))}\n`);
 }
 
-// Last `limit` audit entries, oldest first.
-export function readAudit(dir, limit = 50) {
+// Last `limit` audit entries, oldest first. When filtering by memory id, keep
+// its own entries, its ending request, and entries that target it (for merges).
+export function readAudit(dir, limit = 50, id) {
   const path = join(dir, AUDIT);
   if (!existsSync(path)) return [];
   const lines = readData(dir, path).split("\n").filter((line) => line.trim() !== "");
-  return lines.slice(-limit).map((line) => JSON.parse(openLine(dir, line)));
+  const entries = lines.map((line) => JSON.parse(openLine(dir, line)));
+  const matching = id === undefined
+    ? entries
+    : entries.filter((entry) => entry.id === id || entry.id === `forget-${id}` || entry.target === id);
+  return matching.slice(-limit);
 }
 
 // Builds and checks a new memory without writing anything.

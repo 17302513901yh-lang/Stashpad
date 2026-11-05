@@ -7,6 +7,8 @@ import { run } from "../src/cli.mjs";
 import {
   acceptPending,
   listPending,
+  mergeMemories,
+  queueForget,
   readAudit,
   rejectPending,
   saveMemory,
@@ -175,4 +177,75 @@ test("CLI: reject needs an id and records the reason", async () => {
     0,
   );
   assert.equal(readAudit(dir).at(-1).reason, "wrong project");
+});
+
+test("CLI: audit accepts a larger limit and keeps JSON output", async () => {
+  const dir = fresh();
+  for (let i = 0; i < 55; i += 1) {
+    saveMemory(dir, {
+      id: `entry-${i}`,
+      kind: "fact",
+      text: `Audit entry ${i}.`,
+      sourceType: "user",
+      sourceRef: "test",
+    });
+  }
+
+  const expanded = harness();
+  assert.equal(await run(["audit", "--limit", "200", "--json", "--dir", dir], expanded.io), 0);
+  const expandedRows = JSON.parse(expanded.out[0]);
+  assert.equal(expandedRows.length, 55);
+  assert.equal(expandedRows[0].id, "entry-0");
+
+  const defaultLimit = harness();
+  assert.equal(await run(["audit", "--json", "--dir", dir], defaultLimit.io), 0);
+  const defaultRows = JSON.parse(defaultLimit.out[0]);
+  assert.equal(defaultRows.length, 50);
+  assert.equal(defaultRows[0].id, "entry-5");
+});
+
+test("CLI: audit filters related memory events before applying the limit", async () => {
+  const dir = fresh();
+  const put = (id) => saveMemory(dir, {
+    id,
+    kind: "fact",
+    text: `Memory ${id}.`,
+    sourceType: "user",
+    sourceRef: "test",
+  });
+
+  put("db-choice");
+  queueForget(dir, "db-choice", "outdated");
+  put("kept-choice");
+  mergeMemories(dir, "kept-choice", ["db-choice"]);
+  for (let i = 0; i < 4; i += 1) put(`unrelated-${i}`);
+
+  const byEndedId = harness();
+  assert.equal(await run(["audit", "db-choice", "--limit", "2", "--json", "--dir", dir], byEndedId.io), 0);
+  const endedRows = JSON.parse(byEndedId.out[0]);
+  assert.deepEqual(endedRows.map((entry) => entry.action), ["queued", "merged"]);
+  assert.equal(endedRows[0].id, "forget-db-choice");
+  assert.equal(endedRows[1].target, "kept-choice");
+
+  const byKeepId = harness();
+  assert.equal(await run(["audit", "kept-choice", "--json", "--dir", dir], byKeepId.io), 0);
+  const keptRows = JSON.parse(byKeepId.out[0]);
+  assert.deepEqual(keptRows.map((entry) => entry.id), ["kept-choice", "db-choice"]);
+  assert.equal(keptRows[1].target, "kept-choice");
+
+  const noEntries = harness();
+  assert.equal(await run(["audit", "not-in-the-log", "--json", "--dir", dir], noEntries.io), 0);
+  assert.deepEqual(JSON.parse(noEntries.out[0]), []);
+});
+
+test("CLI: audit rejects invalid limits and extra ids", async () => {
+  for (const limit of ["0", "10001", "1.5", "1.0", "1e3", "nope"]) {
+    const result = harness();
+    assert.equal(await run(["audit", "--limit", limit], result.io), 2, limit);
+    assert.match(result.err.join("\n"), /1 to 10000/);
+  }
+
+  const extra = harness();
+  assert.equal(await run(["audit", "first", "second"], extra.io), 2);
+  assert.match(extra.err.join("\n"), /at most one memory id/);
 });
