@@ -7,7 +7,7 @@ import { serveMcp } from "./mcp.mjs";
 import { runEval } from "./eval.mjs";
 import { importMemories } from "./importer.mjs";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { exportMemories } from "./export.mjs";
+import { exportMemories, exportMarkdown } from "./export.mjs";
 import { archiveSource } from "./sources.mjs";
 import { buildBrief, DEFAULT_BRIEF_CHARS, HANDOVER_PREFIX, isHandoverId, syncAgentsFile } from "./brief.mjs";
 import { CLIENTS, setupText } from "./setup.mjs";
@@ -75,7 +75,7 @@ export const USAGE = `Usage:
   stashpad reject <id> [--reason "<why>"]
   stashpad audit [<id>] [--limit N] [--json]
   stashpad import <file> [--format jsonl|text] [--source-ref "<source>"]   queue memories from an export
-  stashpad export [--all] [--out <file>]   write memories as JSON Lines (current only; --all adds ended ones)
+  stashpad export [--format jsonl|markdown] [--all] [--out <file>]   export memories (current only; --all adds ended ones)
   stashpad eval [--json]       run the fixed checks and baselines in a temporary store
   stashpad mcp                 serve the eight agent tools over stdio (for MCP clients)
   stashpad ui [--port N] [--open]   review waiting memories in a page on this computer (Ctrl+C stops it)
@@ -311,7 +311,10 @@ async function cmdUi(io, dir, values) {
 
 function cmdExport(io, dir, values) {
   if (encryptionOf(dir) !== null) io.stderr("note: this store is encrypted; the export is plain text. Keep it somewhere safe.");
-  const { text, count, skipped } = exportMemories(dir, { includeEnded: values.all === true });
+  const format = values.format ?? "jsonl";
+  if (!["jsonl", "markdown"].includes(format)) return usageError(io, "export --format must be jsonl or markdown");
+  const exporter = format === "markdown" ? exportMarkdown : exportMemories;
+  const { text, count, skipped } = exporter(dir, { includeEnded: values.all === true });
   for (const item of skipped) io.stderr(`skipped ${item.file}: ${item.reason}`);
   if (values.out !== undefined) {
     if (existsSync(values.out)) {

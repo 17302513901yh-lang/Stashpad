@@ -24,3 +24,17 @@ export function exportMemories(dir, { includeEnded = false, today = todayIso() }
     );
   return { text: lines.map((line) => `${line}\n`).join(""), count: lines.length, skipped };
 }
+
+export function exportMarkdown(dir, { includeEnded = false, today = todayIso() } = {}) {
+  const { entries, skipped } = readEntries(dir);
+  const current = entries.filter((entry) => isCurrent(entry.meta, today));
+  const ended = includeEnded ? entries.filter((entry) => !isCurrent(entry.meta, today)) : [];
+  const section = (entry, heading = "##") => {
+    const { id, body, meta } = entry;
+    const validTo = meta.valid_to ?? "current";
+    return `${heading} ${id}\n- Kind: ${meta.kind}\n- Valid from: ${meta.valid_from}\n- Valid to: ${validTo}\n- Source: ${meta.source_type}: ${meta.source_ref}\n\n${body}`;
+  };
+  const parts = ["# Stashpad export", ...current.map((entry) => section(entry))];
+  if (ended.length > 0) parts.push(`## Ended memories\n\n${ended.map((entry) => section(entry, "###")).join("\n\n")}`);
+  return { text: `${parts.join("\n\n")}\n`, count: current.length + ended.length, skipped };
+}
