@@ -8,6 +8,8 @@
 - **`stashpad audit <id> --limit N`:** the audit log of one memory, including the request that ended it and merges into it, and up to 10,000 entries instead of the last 50 (#27).
 - **The handoff reads Codex CLI sessions:** patches sent through a shell or function call, and user messages stored only as events, now show up in the summary before compaction (#28).
 - **`stashpad export --format markdown`:** one readable Markdown file, current memories first and ended ones in their own section with `--all` (#29).
+- **Recall once per session:** the prompt hook no longer pastes the same memories into every prompt of a long session. After compaction or `/clear` they can be given again. Session files hold ids only, stay out of git and are removed after 7 days.
+- **`stashpad feedback --last`:** feedback on the memory the prompt hook gave last, without looking up its id; when it gave several, they are listed and you pick one.
 
 ### Thanks
 

@@ -9,6 +9,7 @@ import { createHandoff } from "./handoff.mjs";
 import { recall } from "./recall.mjs";
 import { readPins } from "./pins.mjs";
 import { findSecrets } from "./security.mjs";
+import { givenIds, updateSession } from "./sessions.mjs";
 import { existsSync as exists } from "node:fs";
 import { resolve } from "node:path";
 
@@ -133,12 +134,45 @@ export function handoffText(summary, reason) {
   return parts.join("\n");
 }
 
+// Session state is a convenience: when it cannot be read or written (an encrypted store without
+// the passphrase, a read-only folder) the hook still does its main job.
+function note(dir, input, change) {
+  try {
+    updateSession(dir, input.session_id, change);
+  } catch {
+    // see above
+  }
+}
+
+function safeGiven(dir, input) {
+  try {
+    return givenIds(dir, input.session_id);
+  } catch {
+    return [];
+  }
+}
+
+function given(state, ids) {
+  state.prompts = (state.prompts ?? 0) + 1;
+  if (ids.length === 0) return;
+  state.given = [...state.given, ...ids];
+  state.last = { at: new Date().toISOString(), ids };
+}
+
 // Returns the text to print (may be empty). Never throws.
 export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS, globalDir = null } = {}) {
   const global = globalDir && resolve(globalDir) !== resolve(dir) && exists(globalDir) ? globalDir : null;
   try {
     switch (event) {
       case "session-start": {
+        // Compaction or /clear drops what the prompt hook gave earlier, so it may be given again.
+        note(dir, input, (s) => {
+          if (input.source === "compact" || input.source === "clear") s.given = [];
+          s.source = typeof input.source === "string" ? input.source.slice(0, 20) : null;
+        });
+        if (global) note(global, input, (s) => {
+          if (input.source === "compact" || input.source === "clear") s.given = [];
+        });
         const after = input.source === "compact" ? "Context was just compacted. Your Stashpad memory, again:\n" : "";
         if (!global) return after + buildBrief(dir, { maxChars }).text;
         // Project first; the global store (true in every project) gets a third of the room.
@@ -147,15 +181,19 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
         return `${after}${project}\nGlobal store (all projects):\n${everywhere.join("\n")}`;
       }
       case "prompt": {
-        const local = recall(dir, input.prompt ?? "", { exclude: readPins(dir) });
+        // Memories this session already got from this hook are not pasted again.
+        const local = recall(dir, input.prompt ?? "", { exclude: [...readPins(dir), ...safeGiven(dir, input)] });
+        note(dir, input, (s) => given(s, local.hits));
         if (!global) return local.text;
-        const wide = recall(global, input.prompt ?? "", { exclude: readPins(global), limit: Math.max(0, 3 - local.hits.length) });
+        const wide = recall(global, input.prompt ?? "", { exclude: [...readPins(global), ...safeGiven(global, input)], limit: Math.max(0, 3 - local.hits.length) });
+        note(global, input, (s) => given(s, wide.hits));
         if (!wide.text) return local.text;
         if (!local.text) return wide.text.replace("Stashpad memories", "Stashpad global memories");
         return `${local.text}\n${wide.text.split("\n").slice(2).join("\n")}`;
       }
       case "pre-compact":
       case "session-end": {
+        if (event === "session-end") note(dir, input, (s) => (s.ended_at = new Date().toISOString()));
         const summary = summarizeTranscript(input.transcript_path, { cwd: input.cwd ?? null });
         if (!summary) return "";
         const reason = event === "pre-compact" ? `compaction (${input.trigger ?? "auto"})` : "the end of a session";

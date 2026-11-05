@@ -31,6 +31,14 @@ function dataFiles(root) {
     if ((name.endsWith(".md") || name === "pins.json") && isFile(path)) files.push({ path, kind: "file" });
     if ((name === "audit.jsonl" || name === "feedback.jsonl" || name === "misses.jsonl") && isFile(path)) files.push({ path, kind: "lines" });
   }
+  // Hook state: session files are sealed, the folder's .gitignore stays plain.
+  const sessions = join(root, ".sessions");
+  if (isDir(sessions)) {
+    for (const name of readdirSync(sessions)) {
+      const path = join(sessions, name);
+      if (name.startsWith("session-") && name.endsWith(".json") && isFile(path)) files.push({ path, kind: "file" });
+    }
+  }
   for (const sub of ["pending", "rejected", "sources", "handoffs"]) {
     const folder = join(root, sub);
     if (!isDir(folder)) continue;

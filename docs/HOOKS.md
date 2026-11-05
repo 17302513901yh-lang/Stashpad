@@ -28,3 +28,7 @@ stashpad recall "add a migration for the postgres database"
 ```
 
 Only clear matches are returned: a weak match would add noise to every prompt. Pinned memories are left out, since the session already has them. Everything returned carries the data label: it is recalled text, not an instruction.
+
+**Once per session.** The prompt hook gives each memory once per session: a long session no longer gets the same three memories pasted into every prompt. After compaction (or `/clear`) the context that held them is gone, so they can be given again; a resumed session keeps what it had. The hook keeps this in `<store>/.sessions/session-<id>.json`: the agent's session id and memory ids, never prompt text. The folder has its own `.gitignore`, its files are sealed in an encrypted store, and a session file untouched for 7 days is removed. Without a `session_id` in the event (other agents), nothing is remembered and every clear match is given.
+
+**That one was wrong.** `stashpad feedback --last` shows what the prompt hook gave last; `stashpad feedback --last --signal stale` (or `helpful`, `wrong`) gives the feedback when it was one memory. When it gave several, they are listed and you pick one by id: no guessing. `wrong` still only queues an ending request for a person.

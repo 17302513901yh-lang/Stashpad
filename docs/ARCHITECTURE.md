@@ -54,6 +54,7 @@ graph LR
   audit.jsonl           every change, with a short content hash
   synonyms.json         optional word groups for search
   .stashpad-store.json  format marker
+  .sessions/            hook state per agent session (ids only, git-ignored, pruned after 7 days)
   .snapshots/           snapshots (daily automatic, manual, before restore and migrate)
   .stashpad.lock        only while a write is running
 ```

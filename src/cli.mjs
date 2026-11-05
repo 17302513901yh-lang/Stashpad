@@ -51,6 +51,7 @@ import {
 
 import { cancelHandoff, claimHandoff, createHandoff, listHandoffs } from "./handoff.mjs";
 import { giveFeedback, lint } from "./feedback.mjs";
+import { lastGiven } from "./sessions.mjs";
 export const USAGE = `Usage:
   stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD] [--expires YYYY-MM-DD] [--supersedes <old-id>]
   stashpad get <id> [--json]
@@ -89,6 +90,7 @@ export const USAGE = `Usage:
   stashpad handoff claim [<id>] [--by <agent>] [--json]   take one handoff, exactly once (a person's notes first)
   stashpad handoff cancel <id> [--reason "<why>"]
   stashpad feedback <id> --signal helpful|stale|wrong [--note "<why>"]   wrong also asks for the memory to end
+  stashpad feedback --last [--signal helpful|stale|wrong]   the memory the prompt hook gave last (lists them when it gave several)
   stashpad lint [--json]               memories worth a look: marked stale/wrong, unconfirmed, expiring, broken links
   stashpad sync-agents [<file>]        put the brief into AGENTS.md (or another file) between markers; other text is kept
   stashpad encrypt                     optional: seal the whole store (needs STASHPAD_PASSPHRASE or STASHPAD_KEY_FILE)
@@ -157,6 +159,7 @@ const OPTIONS = {
   since: { type: "string" },
   until: { type: "string" },
   explain: { type: "boolean" },
+  last: { type: "boolean" },
   yes: { type: "boolean" },
   version: { type: "boolean", short: "v" },
   help: { type: "boolean", short: "h" },
@@ -640,6 +643,27 @@ async function cmdHandoff(io, dir, [action, id], values) {
   return usageError(io, "handoff needs leave, list, claim or cancel.");
 }
 
+// --last: the memories the prompt hook gave last. With one, the feedback goes to it; with several,
+// they are listed and the person picks one (no guessing which one was meant).
+function cmdFeedbackLast(io, dir, values) {
+  const last = lastGiven(dir);
+  if (last === null) {
+    io.stdout("The prompt hook has not given any memory yet (or its session files are gone after 7 days).");
+    return values.signal === undefined ? 0 : 1;
+  }
+  const when = String(last.at).slice(0, 16).replace("T", " ");
+  if (values.signal === undefined || last.ids.length > 1) {
+    if (values.json) io.stdout(JSON.stringify({ at: last.at, ids: last.ids }));
+    else {
+      io.stdout(`Last given by the prompt hook (${when} UTC): ${last.ids.join(", ")}`);
+      const example = last.ids.length > 1 ? "<id>" : last.ids[0];
+      io.stdout(`Give feedback with: stashpad feedback ${example} --signal helpful|stale|wrong${last.ids.length === 1 ? " (or --last --signal ...)" : ""}`);
+    }
+    return values.signal === undefined ? 0 : 1;
+  }
+  return cmdFeedback(io, dir, last.ids[0], values);
+}
+
 function cmdFeedback(io, dir, id, values) {
   if (values.signal === undefined) return usageError(io, "feedback needs --signal helpful, stale or wrong.");
   const r = giveFeedback(dir, id, { signal: values.signal, note: values.note ?? null, by: values.by ?? null });
@@ -826,6 +850,10 @@ export async function run(argv, io = defaultIo()) {
       case "handoff":
         return await cmdHandoff(io, dir, positionals.slice(1), values);
       case "feedback":
+        if (values.last) {
+          if (id) return usageError(io, "feedback --last takes no id; it uses the memory the prompt hook gave last.");
+          return cmdFeedbackLast(io, dir, values);
+        }
         if (!id) return usageError(io, "feedback needs an id, for example: stashpad feedback db-choice --signal stale");
         return cmdFeedback(io, dir, id, values);
       case "lint":
