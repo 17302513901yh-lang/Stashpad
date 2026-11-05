@@ -40,6 +40,32 @@ Nothing an agent or a web page writes can claim to be user-stated.
   multi-line values. Quotes are optional. This keeps diffs small and readable.
 - Dates are real calendar dates in `YYYY-MM-DD`.
 
+## Decisions: the choice, why, and what lost
+
+A decision is a memory of kind `decision`. When it is written with `stashpad decide` (or `stashpad_save` with `why`),
+its body follows a fixed layout that a person can read and Stashpad can parse:
+
+```markdown
+We use Postgres for the main database.
+Why: several workers write at the same time
+Rejected: SQLite, MongoDB
+Decided by: the team in the planning call
+```
+
+The first line is the choice; `Why:`, `Rejected:` and `Decided by:` are optional and come in this order. Recall and
+the brief show it as `We use Postgres for the main database. (rejected: SQLite, MongoDB; why: several workers write at
+the same time)`, so an agent that is about to propose SQLite sees that it lost, and why. A prompt that asks why (or
+about a decision, choice, convention or policy) puts matching decisions first.
+
+```bash
+stashpad decide "We use Postgres for the main database" --why "several workers write at the same time" --rejected "SQLite, MongoDB"
+stashpad decide "Tabs for indentation" --why "the linter wants them" --id indent-style --by "the team"
+```
+
+Without `--id` the id comes from the choice (`decision-we-use-postgres-for-the-main`). The other `save` options
+(`--source-ref`, `--source-type`, `--supersedes`, `--files`, `--expires`) work too; a person's decision is stored right
+away, an agent's waits for review.
+
 ## Files a memory is about (anchors.json)
 
 A memory can be anchored to the files or folders it talks about, so recall, the brief and lint can say when they

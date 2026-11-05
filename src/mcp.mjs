@@ -17,6 +17,7 @@ import { createHandoff, listHandoffs, claimHandoff } from "./handoff.mjs";
 import { giveFeedback } from "./feedback.mjs";
 import { checkAnchors, checkRequested, requestAnchors } from "./anchors.mjs";
 import { logShown } from "./shown.mjs";
+import { decisionBody } from "./decisions.mjs";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_INFO = { name: "stashpad", version: VERSION };
@@ -62,7 +63,7 @@ export const TOOLS = [
     name: "stashpad_save",
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     description:
-      "Propose a new memory. It is not stored or searchable until a person accepts it. Give the source of the claim. Name the files it is about in files, so recall can say when they change.",
+      "Propose a new memory. It is not stored or searchable until a person accepts it. Give the source of the claim. Name the files it is about in files, so recall can say when they change. For a decision, put the choice in text and give why (and rejected options): recall then shows why it was chosen.",
     inputSchema: {
       type: "object",
       properties: {
@@ -71,6 +72,8 @@ export const TOOLS = [
         text: { type: "string", description: "The memory, in plain words." },
         source_ref: { type: "string", description: "Where the claim comes from, one line." },
         supersedes: { type: "string", description: "Id of the memory this one replaces, if any." },
+        why: { type: "string", description: "kind decision only: why it was chosen, in one line." },
+        rejected: { type: "array", items: { type: "string" }, maxItems: 10, description: "kind decision only: the options that were considered and not chosen." },
         files: {
           type: "array",
           items: { type: "string" },
@@ -213,11 +216,15 @@ function callTool(name, args, dir) {
         requireArgs(name, args, ["id", "kind", "text", "source_ref"]);
         // Paths only: they are checked now and read when a person accepts the memory.
         const files = args.files === undefined ? [] : checkRequested(Array.isArray(args.files) ? args.files.map(String) : [String(args.files)]);
+        // A decision with a reason gets the fixed decision layout (choice, Why:, Rejected:).
+        const structured = args.why !== undefined || args.rejected !== undefined;
+        if (structured && String(args.kind) !== "decision") throw new StoreError("why and rejected are for kind decision only.");
+        const text = structured ? decisionBody({ choice: String(args.text), why: args.why === undefined ? null : String(args.why), rejected: Array.isArray(args.rejected) ? args.rejected.map(String) : args.rejected === undefined ? [] : [String(args.rejected)] }) : String(args.text);
         // Source type is fixed: an agent write is never a user statement.
         const result = saveMemory(dir, {
           id: String(args.id),
           kind: String(args.kind),
-          text: String(args.text),
+          text,
           sourceType: "agent",
           sourceRef: String(args.source_ref),
           supersedes: args.supersedes ? String(args.supersedes) : null,

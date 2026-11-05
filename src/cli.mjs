@@ -53,10 +53,13 @@ import {
 import { cancelHandoff, claimHandoff, createHandoff, listHandoffs } from "./handoff.mjs";
 import { giveFeedback, lint } from "./feedback.mjs";
 import { lastGiven } from "./sessions.mjs";
+import { decisionBody, decisionId } from "./decisions.mjs";
 import { clearShown, logShown, shownReport } from "./shown.mjs";
 import { addAnchors, checkAnchors, checkRequested, hashPaths, pathFromUser, projectRoot, readAnchorsFile, reanchor, removeAnchors, requestAnchors, requestedFor, setAnchors } from "./anchors.mjs";
 export const USAGE = `Usage:
   stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD] [--expires YYYY-MM-DD] [--supersedes <old-id>] [--files a,b]
+  stashpad decide "<choice>" --why "<reason>" [--rejected "A, B"] [--by <who>] [--id <id>] [--source-ref "<where>"] [--supersedes <old-id>] [--files a,b]
+                                       record a decision with its reason and the options that lost
   stashpad get <id> [--json]
   stashpad history <id> [--json]
   stashpad list [--all] [filters] [--json]
@@ -172,6 +175,9 @@ const OPTIONS = {
   changed: { type: "boolean" },
   session: { type: "string" },
   branch: { type: "string" },
+  why: { type: "string" },
+  rejected: { type: "string", multiple: true },
+  id: { type: "string" },
   today: { type: "boolean" },
   clear: { type: "boolean" },
   yes: { type: "boolean" },
@@ -246,6 +252,23 @@ async function cmdSave(io, dir, id, values) {
     io.stdout(`Looks related to: ${ids}. If it replaces one, end the old one: stashpad forget <id> --reason "replaced by ${id}"`);
   }
   return 0;
+}
+
+// A decision memory with a fixed body layout (docs/FORMAT.md): the choice, why, what lost, who.
+async function cmdDecide(io, dir, words, values) {
+  const choice = words.join(" ").trim();
+  if (!choice) return usageError(io, 'decide needs the choice, for example: stashpad decide "We use Postgres" --why "several workers write at once" --rejected SQLite');
+  if (values.why === undefined) return usageError(io, "decide needs --why: the reason is what keeps the next agent from undoing the choice.");
+  const text = decisionBody({ choice, why: values.why, rejected: values.rejected ?? [], by: values.by ?? null });
+  const taken = (candidate) => existsSync(join(dir, `${candidate}.md`)) || existsSync(join(dir, "pending", `${candidate}.md`));
+  const id = values.id ?? decisionId(choice, taken);
+  return cmdSave(io, dir, id, {
+    ...values,
+    kind: "decision",
+    text,
+    "source-type": values["source-type"] ?? "user",
+    "source-ref": values["source-ref"] ?? "decision recorded with stashpad decide",
+  });
 }
 
 function cmdReview(io, dir, values) {
@@ -812,6 +835,8 @@ export async function run(argv, io = defaultIo()) {
     switch (command) {
       case "search":
         return cmdSearch(io, dir, positionals.slice(1), values);
+      case "decide":
+        return await cmdDecide(io, dir, positionals.slice(1), values);
       case "save":
         if (!id) return usageError(io, "save needs an id, for example: stashpad save db-choice ...");
         return await cmdSave(io, dir, id, values);

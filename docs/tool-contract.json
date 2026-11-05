@@ -40,9 +40,11 @@
         "files",
         "id",
         "kind",
+        "rejected",
         "source_ref",
         "supersedes",
-        "text"
+        "text",
+        "why"
       ]
     },
     {
@@ -90,5 +92,5 @@
       ]
     }
   ],
-  "hash": "5cddd71abea724162cf274a47f790d45e591d9ca3003a2edc79dd814f7b205c6"
+  "hash": "ebaa561ab2f9f0cb4cd0c3f630d2c3e475e0b68e44f70634065a8490e430f8a7"
 }
