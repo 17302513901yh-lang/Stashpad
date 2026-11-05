@@ -1,6 +1,6 @@
 // MCP server for Stashpad over stdio (newline-delimited JSON-RPC). No dependencies.
 // Agents get the following tools. Anything an agent writes waits for a person to accept it.
-import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
+import { DATA_LABEL, defuseValues, findInstructionLikeText } from "./security.mjs";
 import { parseMemory } from "./memory-format.mjs";
 import { VERSION } from "./version.mjs";
 import { aboutEntity } from "./entities.mjs";
@@ -149,8 +149,9 @@ function textResult(text, isError = false) {
   return { content: [{ type: "text", text }], ...(isError ? { isError: true } : {}) };
 }
 
+// Every string an agent gets back is defused: a stored "</system-reminder>" cannot pass for harness text.
 function jsonResult(value) {
-  return textResult(JSON.stringify(value, null, 2));
+  return textResult(JSON.stringify(defuseValues(value), null, 2));
 }
 
 function requireArgs(name, args, names) {

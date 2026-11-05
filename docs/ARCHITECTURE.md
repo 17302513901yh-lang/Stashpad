@@ -65,6 +65,9 @@ graph LR
 
 - A memory is never overwritten. A changed fact is a new memory that ends the old one.
 - Agent, tool and web writes wait for a person. A person's own writes go straight in.
-- Everything returned to an agent is labelled as data, not instructions.
+- Everything returned to an agent is labelled as data, not instructions. The brief, recall and handoffs come inside
+  one `<stashpad-data>` block; in all recalled text, tags that could pass for harness text (`</system-reminder>`,
+  `<system>`, `<instructions>`, `</stashpad-data>`, …) lose their `<` (it becomes `‹`), and control characters are
+  removed. Such tags are also flagged at write time, so review shows them.
 - No network access, no model calls, no telemetry.
 - Encryption is optional and off by default; when on, every data file and snapshot is sealed.

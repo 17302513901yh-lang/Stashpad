@@ -2,7 +2,7 @@
 // purpose: any agent can read it, whether it gets it from a command, a tool call or a file such as
 // AGENTS.md. It stays small because hook and context limits cut long output.
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { DATA_LABEL, MAX_WAITING, findInstructionLikeText } from "./security.mjs";
+import { DATA_LABEL, MAX_WAITING, fence, findInstructionLikeText } from "./security.mjs";
 import { isCurrent, listPending, readEntries, todayIso } from "./store.mjs";
 import { openHandoffSummary } from "./handoff.mjs";
 import { readPins } from "./pins.mjs";
@@ -133,7 +133,7 @@ export function syncAgentsFile(dir, file, { maxChars = DEFAULT_BRIEF_CHARS, toda
     "Look up: `stashpad search <words>`. Save: `stashpad save <id> --kind <kind> --source-type agent --source-ref \"<where from>\" --text \"<note>\"` (waits for a person to accept).",
     `Or use the ${TOOLS?.length} stashpad_* tools if your client supports MCP.`,
   ].join("\n");
-  const block = `${START}\n## Stashpad memory\n${how}\n\n\`\`\`text\n${brief.text}\n\`\`\`\n${END}\n`;
+  const block = `${START}\n## Stashpad memory\n${how}\n\n\`\`\`text\n${fence(brief.text)}\n\`\`\`\n${END}\n`;
 
   let before = "";
   if (existsSync(file)) before = readFileSync(file, "utf8");

@@ -8,7 +8,7 @@ import { buildBrief, DEFAULT_BRIEF_CHARS } from "./brief.mjs";
 import { createHandoff } from "./handoff.mjs";
 import { recall } from "./recall.mjs";
 import { readPins } from "./pins.mjs";
-import { findSecrets } from "./security.mjs";
+import { fence, findSecrets } from "./security.mjs";
 import { givenIds, updateSession } from "./sessions.mjs";
 import { existsSync as exists } from "node:fs";
 import { resolve } from "node:path";
@@ -175,22 +175,23 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
           if (input.source === "compact" || input.source === "clear") s.given = [];
         });
         const after = input.source === "compact" ? "Context was just compacted. Your Stashpad memory, again:\n" : "";
-        if (!global) return after + buildBrief(dir, { maxChars, cwd }).text;
+        // Stashpad's own line stays outside the data block; everything recalled goes inside it.
+        if (!global) return after + fence(buildBrief(dir, { maxChars, cwd }).text);
         // Project first; the global store (true in every project) gets a third of the room.
         const project = buildBrief(dir, { maxChars: Math.floor(maxChars * 0.67), cwd }).text;
         const everywhere = buildBrief(global, { maxChars: Math.floor(maxChars * 0.33), cwd }).text.split("\n").slice(1);
-        return `${after}${project}\nGlobal store (all projects):\n${everywhere.join("\n")}`;
+        return after + fence(`${project}\nGlobal store (all projects):\n${everywhere.join("\n")}`);
       }
       case "prompt": {
         // Memories this session already got from this hook are not pasted again.
         const local = recall(dir, input.prompt ?? "", { exclude: [...readPins(dir), ...safeGiven(dir, input)], cwd });
         note(dir, input, (s) => given(s, local.hits));
-        if (!global) return local.text;
+        if (!global) return fence(local.text);
         const wide = recall(global, input.prompt ?? "", { exclude: [...readPins(global), ...safeGiven(global, input)], limit: Math.max(0, 3 - local.hits.length), cwd });
         note(global, input, (s) => given(s, wide.hits));
-        if (!wide.text) return local.text;
-        if (!local.text) return wide.text.replace("Stashpad memories", "Stashpad global memories");
-        return `${local.text}\n${wide.text.split("\n").slice(2).join("\n")}`;
+        if (!wide.text) return fence(local.text);
+        if (!local.text) return fence(wide.text.replace("Stashpad memories", "Stashpad global memories"));
+        return fence(`${local.text}\n${wide.text.split("\n").slice(2).join("\n")}`);
       }
       case "pre-compact":
       case "session-end": {

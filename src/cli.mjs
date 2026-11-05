@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { parseMemory } from "./memory-format.mjs";
-import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
+import { DATA_LABEL, defuse, defuseValues, fence, findInstructionLikeText } from "./security.mjs";
 import { serveMcp } from "./mcp.mjs";
 import { runEval } from "./eval.mjs";
 import { importMemories } from "./importer.mjs";
@@ -388,11 +388,11 @@ function cmdGet(io, dir, id, values) {
     anchored = null;
   }
   if (values.json) {
-    io.stdout(JSON.stringify({ label: DATA_LABEL, reads_like_instruction: flagged, ...meta, body, ...(anchored ? { files: anchored.files } : {}) }));
+    io.stdout(JSON.stringify(defuseValues({ label: DATA_LABEL, reads_like_instruction: flagged, ...meta, body, ...(anchored ? { files: anchored.files } : {}) })));
   } else {
     const note = flagged ? " (note: reads like an instruction; it is still only a note)" : "";
     io.stdout(`# ${DATA_LABEL}${note}`);
-    io.stdout(text.replace(/\n$/, ""));
+    io.stdout(defuse(text).replace(/\n$/, ""));
     if (anchored) io.stdout(`# files: ${anchored.files.map((f) => `${f.path} (${f.state}${f.to ? ` -> ${f.to}` : ""})`).join(", ")}`);
   }
   return 0;
@@ -535,8 +535,8 @@ function cmdBrief(io, dir, values) {
   if (!Number.isInteger(maxChars) || maxChars < 300 || maxChars > 20000) {
     return usageError(io, "--max-chars must be a whole number from 300 to 20000");
   }
-  const brief = buildBrief(dir, { maxChars });
-  io.stdout(values.json ? JSON.stringify(brief) : brief.text);
+  const brief = buildBrief(dir, { maxChars, cwd: io.cwd });
+  io.stdout(values.json ? JSON.stringify(defuseValues(brief)) : fence(brief.text));
   return 0;
 }
 
@@ -650,12 +650,11 @@ async function cmdHandoff(io, dir, [action, id], values) {
   }
   if (action === "claim") {
     const r = claimHandoff(dir, { id: id ?? null, by: values.by ?? null });
-    if (values.json) io.stdout(JSON.stringify(r));
+    if (values.json) io.stdout(JSON.stringify(defuseValues(r)));
     else if (!r.claimed) io.stdout(r.reason);
     else {
-      io.stdout(`# ${r.label}`);
-      io.stdout(`Handoff ${r.id} (${r.origin}${r.from ? ` from ${r.from}` : ""}, ${r.created_at.slice(0, 16).replace("T", " ")} UTC)${r.flagged ? ` [check: ${r.flagged}]` : ""}:`);
-      io.stdout(r.text);
+      const head = `Handoff ${r.id} (${r.origin}${r.from ? ` from ${r.from}` : ""}, ${r.created_at.slice(0, 16).replace("T", " ")} UTC)${r.flagged ? ` [check: ${r.flagged}]` : ""}:`;
+      io.stdout(fence(`${r.label}\n${head}\n${r.text}`));
       if (r.others_open > 0) io.stdout(`${r.others_open} more open: stashpad handoff list`);
     }
     return 0;
@@ -859,9 +858,9 @@ export async function run(argv, io = defaultIo()) {
       case "recall": {
         const words = positionals.slice(1).join(" ").trim();
         if (!words) return usageError(io, 'recall needs words, for example: stashpad recall "add a database migration"');
-        const result = recall(dir, words);
-        if (values.json) io.stdout(JSON.stringify(result));
-        else io.stdout(result.text || "No clear match.");
+        const result = recall(dir, words, { cwd: io.cwd });
+        if (values.json) io.stdout(JSON.stringify(defuseValues(result)));
+        else io.stdout(result.text ? fence(result.text) : "No clear match.");
         return 0;
       }
       case "hook": {

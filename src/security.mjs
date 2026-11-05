@@ -42,6 +42,15 @@ const SECRET_PATTERNS = [
   },
 ];
 
+// Tag names an agent app or model uses for its own text, plus Stashpad's own fence. Text inside a
+// memory or handoff that opens or closes one of these could pass for harness text, so recalled text
+// never carries them as real tags.
+const TAG_NAMES = String.raw`(?:system[\w:.-]*|tool[\w:.-]*|function[\w:.-]*|stashpad[\w:.-]*|antml[\w:.-]*|user|assistant|human|developer|instructions?|important)`;
+const FAKE_TAG = new RegExp(String.raw`<(?=\s*\/?\s*${TAG_NAMES}(?:[\s/>]|$))`, "giu");
+const FAKE_TAG_TEST = new RegExp(String.raw`<\s*\/?\s*${TAG_NAMES}(?:[\s/>]|$)`, "iu");
+// Control characters other than tab and newline.
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
+
 // Phrases that try to give an agent orders. Only flagged, never blocked: the text may be a
 // legitimate note about such phrases. A person decides in review.
 const INSTRUCTION_PATTERNS = [
@@ -69,7 +78,33 @@ export function findSecrets(text) {
 export function findInstructionLikeText(text) {
   if (findHiddenCharacters(text).length > 0) return true;
   const clean = normalizeForScan(text);
-  return INSTRUCTION_PATTERNS.some((pattern) => pattern.test(clean));
+  return FAKE_TAG_TEST.test(clean) || INSTRUCTION_PATTERNS.some((pattern) => pattern.test(clean));
+}
+
+// Makes stored text safe to show an agent: hidden and control characters removed, look-alike forms
+// folded (so a full-width "＜system＞" is caught too), and the "<" of anything that looks like a harness
+// or fence tag (</system-reminder>, <instructions>, </stashpad-data>) replaced by "‹". Ordinary
+// angle brackets (<div>, Array<string>, a < b) are left alone.
+export function defuse(text) {
+  return normalizeForScan(String(text)).replace(/\r\n?/g, "\n").replace(CONTROL, "").replace(FAKE_TAG, "\u2039");
+}
+
+// The same for every string in a value that becomes JSON (the JSON itself stays valid).
+export function defuseValues(value) {
+  if (typeof value === "string") return defuse(value);
+  if (Array.isArray(value)) return value.map(defuseValues);
+  if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, defuseValues(v)]));
+  return value;
+}
+
+export const FENCE_OPEN = "<stashpad-data>";
+export const FENCE_CLOSE = "</stashpad-data>";
+
+// Recalled text (brief, recall, handoffs) inside one clear data block, opened by the data label.
+export function fence(text) {
+  if (!text) return "";
+  const body = defuse(text);
+  return `${FENCE_OPEN}\n${body.startsWith(DATA_LABEL) ? "" : `${DATA_LABEL}\n`}${body}\n${FENCE_CLOSE}`;
 }
 
 // Label added to everything Stashpad returns, so an agent treats it as data.
