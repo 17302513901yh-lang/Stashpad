@@ -8,7 +8,7 @@ import { buildBrief, DEFAULT_BRIEF_CHARS } from "./brief.mjs";
 import { createHandoff } from "./handoff.mjs";
 import { recall } from "./recall.mjs";
 import { readPins } from "./pins.mjs";
-import { fence, findSecrets } from "./security.mjs";
+import { fence, redactSecrets } from "./security.mjs";
 import { givenIds, updateSession } from "./sessions.mjs";
 import { logShown } from "./shown.mjs";
 import { existsSync as exists } from "node:fs";
@@ -126,13 +126,23 @@ function clip(text, max) {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
+// The note's text, with secrets masked (before anything is cut short, so a cut cannot split one), or
+// null when there is nothing to say. Returns { text, redacted }.
 export function handoffText(summary, reason) {
+  let redacted = 0;
+  const mask = (text) => {
+    const r = redactSecrets(text);
+    redacted += r.count;
+    return r.text;
+  };
   const parts = [`Automatic note at ${reason}. It records what was going on; check the code and git status before acting on it.`];
-  const asks = summary.asks.filter((a) => findSecrets(a).length === 0);
-  if (asks.length === 0 && summary.files.length === 0) return null;
+  const asks = summary.asks.map(mask);
+  const files = summary.files.map(mask);
+  if (asks.length === 0 && files.length === 0) return null;
   if (asks.length) parts.push(`Last requests: ${asks.map((a, i) => `(${i + 1}) ${clip(a, 220)}`).join(" ")}`);
-  if (summary.files.length) parts.push(`Files written: ${summary.files.join(", ")}`);
-  return parts.join("\n");
+  if (files.length) parts.push(`Files written: ${files.join(", ")}`);
+  if (redacted) parts.push(`${redacted} secret(s) masked as [REDACTED].`);
+  return { text: parts.join("\n"), redacted };
 }
 
 // Session state is a convenience: when it cannot be read or written (an encrypted store without
@@ -218,12 +228,12 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
         const summary = summarizeTranscript(input.transcript_path, { cwd: input.cwd ?? null });
         if (!summary) return "";
         const reason = event === "pre-compact" ? `compaction (${input.trigger ?? "auto"})` : "the end of a session";
-        const text = handoffText(summary, reason);
-        if (!text) return "";
+        const written = handoffText(summary, reason);
+        if (!written) return "";
         try {
-          createHandoff(dir, { text, origin: "auto", from: "hook" });
+          createHandoff(dir, { text: written.text, origin: "auto", from: "hook", redacted: written.redacted });
         } catch {
-          // a refused note (for example a secret in a file name) must not break the agent
+          // a refused note (for example one over the size limit) must not break the agent
         }
         return "";
       }

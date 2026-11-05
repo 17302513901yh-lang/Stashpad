@@ -18,7 +18,8 @@ stashpad handoff cancel <id> --reason "already done"
   replaces the older open auto notes, so a stale automatic note never wins over a fresh one.
 - **Claim once:** claiming runs under the store lock, so two sessions starting at the same moment cannot both take
   the same handoff.
-- **Safety:** secrets and invisible characters are refused; text that reads like an order is flagged. The brief says
+- **Safety:** secrets and invisible characters are refused; text that reads like an order is flagged. The automatic
+  handoff from the hooks masks a secret in a request as `[REDACTED]` (and says how many) instead of dropping it. The brief says
   that a handoff is waiting, but does not show its text, so starting a session does not use it up.
 - **Storage:** one JSON file per handoff in `<store>/handoffs/`, sealed when the store is encrypted.
 - **Agents:** the MCP tool `stashpad_handoff` (action `list`, `claim` or `leave`). Notes an agent leaves are `auto`.

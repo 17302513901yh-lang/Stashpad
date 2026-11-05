@@ -80,7 +80,8 @@ Errors say what to do next. Examples:
 
 - `invalid id`: use lowercase letters, digits and hyphens.
 - `already exists`: pick a new id. Memories are not overwritten.
-- `looks like a secret`: remove the key or password from the text.
+- `looks like a secret`: remove the key or password from the text. "a secret value from this computer (NAME)" means
+  the text holds the value of that environment variable or `.env` entry.
 - `already ended`: supersede the memory that replaced it, not the old one.
 
 ## Limits (honest)

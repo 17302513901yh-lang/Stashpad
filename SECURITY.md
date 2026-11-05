@@ -13,7 +13,10 @@ Useful to include: the Stashpad version (`stashpad --version`), operating system
 ## What Stashpad defends against
 
 - Text in memories or tool results that tries to give an agent orders: everything returned is labelled as data, agent writes wait for a person, instruction-like text is flagged.
-- Secrets in memories: keys, tokens, JWTs and passwords in connection strings are refused at write time.
+- Secrets in memories: keys, tokens, JWTs and passwords in connection strings are refused at write time, and so is
+  any text that holds the value of one of this computer's secret-named environment variables or a value from the
+  project's `.env` files (compared in memory only, never stored). The automatic handoff masks secrets as `[REDACTED]`
+  instead.
 - Invisible characters that hide text: refused.
 - Two processes writing at once: a store lock.
 - Files read by someone who gets the disk: optional encryption at rest (AES-256-GCM, scrypt).

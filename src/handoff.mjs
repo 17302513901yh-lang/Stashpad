@@ -77,7 +77,7 @@ function checkName(name, what) {
   return name;
 }
 
-export function createHandoff(dir, { text, origin = "manual", from = null, expiresDays = DEFAULT_EXPIRES_DAYS, now = new Date() }) {
+export function createHandoff(dir, { text, origin = "manual", from = null, expiresDays = DEFAULT_EXPIRES_DAYS, redacted = 0, now = new Date() }) {
   return withStoreLock(dir, () => {
     keyFor(dir);
     prepareForWrite(dir);
@@ -89,6 +89,7 @@ export function createHandoff(dir, { text, origin = "manual", from = null, expir
       id, state: "open", origin, from: checkName(from, "from"), text: text.trim(),
       created_at: now.toISOString(), expires_at: new Date(now.getTime() + expiresDays * 86400000).toISOString(),
       flagged: findInstructionLikeText(text) ? "reads like an instruction" : null,
+      ...(Number.isInteger(redacted) && redacted > 0 ? { redacted } : {}),
     };
     const replaced = [];
     if (origin === "auto") {

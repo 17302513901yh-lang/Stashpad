@@ -140,7 +140,7 @@ Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `sou
 
 - Plain files first. The files are the source of truth.
 - Nothing from an agent, tool or web page is stored until a person accepts it.
-- Secrets are refused at write time (keys, tokens, JWTs, Bearer tokens, passwords in connection strings).
+- Secrets are refused at write time: provider keys and tokens (OpenAI, Anthropic, GitHub, GitLab, AWS, Google, Stripe, Slack, npm, Hugging Face, SendGrid and more), JWTs, Bearer tokens, passwords in connection strings, on command lines and in sentences, and the values of this computer's own secret-named environment variables and `.env` files (compared in memory, never stored). The automatic handoff masks a secret as `[REDACTED]` instead of dropping the request.
 - Invisible characters are refused, and look-alike or split-up words cannot hide an instruction or a secret.
 - Instruction-like text (English and Dutch) is flagged for the reviewer.
 - A gatekeeper refuses agent notes that are too short or near-copies of an existing or waiting memory, and logs the refusal in the audit log. Notes a person writes are never blocked.
