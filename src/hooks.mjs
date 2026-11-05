@@ -42,17 +42,32 @@ function readTail(path) {
 function textOf(content) {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
-    return content.filter((part) => part?.type === "text" && typeof part.text === "string").map((part) => part.text).join(" ");
+    return content.filter((part) => (part?.type === "text" || part?.type === "input_text") && typeof part.text === "string").map((part) => part.text).join(" ");
   }
   return "";
 }
 
-// What the session was doing, read from the end of a Claude Code transcript (JSON Lines): the last
+// What the session was doing, read from the end of an agent session file (JSON Lines): the last
 // few things the user asked and the files that were written. Deterministic: no model reads it.
+// Two shapes: Claude Code transcripts (message per line) and Codex CLI rollouts (response_item per line).
 export function summarizeTranscript(path, { cwd = null, prompts = 3, files = 10 } = {}) {
   if (!path || !existsSync(path)) return null;
   const asks = [];
   const touched = [];
+  const ask = (text) => {
+    const clean = text.replace(/\s+/g, " ").trim();
+    // Injected context (environment, AGENTS.md, caveats) is not something the user asked.
+    // Codex writes a user message twice (response_item and event_msg); the copies sit next to each other.
+    if (clean && !clean.startsWith("<") && !clean.startsWith("Caveat:") && asks.at(-1) !== clean) asks.push(clean);
+  };
+  const touch = (file) => {
+    // Shown with forward slashes on every system, relative to the project when inside it.
+    const shown = (cwd && isAbsolute(file) && !relative(cwd, file).startsWith("..") ? relative(cwd, file) : file).replace(/\\/g, "/");
+    if (!touched.includes(shown)) touched.push(shown);
+  };
+  const patched = (patch) => {
+    for (const match of patch.matchAll(/^\*\*\* (?:Add|Update) File: (.+)$/gm)) touch(match[1].trim());
+  };
   for (const line of readTail(path).split("\n")) {
     if (!line.trim()) continue;
     let entry;
@@ -61,20 +76,43 @@ export function summarizeTranscript(path, { cwd = null, prompts = 3, files = 10 
     } catch {
       continue;
     }
+    if (entry.type === "event_msg" && entry.payload?.type === "user_message" && typeof entry.payload.message === "string") {
+      // Codex CLI: the same user text as a response_item message, sometimes stored only here.
+      ask(entry.payload.message);
+      continue;
+    }
+    if (entry.type === "response_item" && entry.payload) {
+      // Codex CLI: user messages, and apply_patch calls whose patch names the files it adds or updates.
+      // Codex also sends the project's AGENTS.md as a user message; that is context, not a request.
+      // Shape from the third-party notes at https://lin-guanguo.github.io/llm-memory-research/agent-cli/codex-session-files/
+      // (checked against one CLI version only; Codex does not document this file format).
+      const payload = entry.payload;
+      if (payload.type === "message" && payload.role === "user") {
+        const text = textOf(payload.content);
+        if (!text.trimStart().startsWith("# AGENTS.md")) ask(text);
+      }
+      if (payload.type === "custom_tool_call" && payload.name === "apply_patch" && typeof payload.input === "string") {
+        patched(payload.input);
+      }
+      if (payload.type === "function_call" && typeof payload.arguments === "string") {
+        // A patch sent through a shell or function wrapper arrives as a JSON string; the patch is one of its values.
+        let args = {};
+        try {
+          args = JSON.parse(payload.arguments);
+        } catch {}
+        for (const value of Object.values(args ?? {}).flat()) {
+          if (typeof value === "string" && value.includes("*** Begin Patch")) patched(value);
+        }
+      }
+      continue;
+    }
     const message = entry.message ?? entry;
     if (entry.isMeta || entry.isCompactSummary) continue;
-    if (message?.role === "user") {
-      const text = textOf(message.content).replace(/\s+/g, " ").trim();
-      if (text && !text.startsWith("<") && !text.startsWith("Caveat:")) asks.push(text);
-    }
+    if (message?.role === "user") ask(textOf(message.content));
     if (message?.role === "assistant" && Array.isArray(message.content)) {
       for (const part of message.content) {
         const file = part?.type === "tool_use" ? part.input?.file_path ?? part.input?.notebook_path : null;
-        if (typeof file === "string") {
-          // Shown with forward slashes on every system, relative to the project when inside it.
-          const shown = (cwd && isAbsolute(file) && !relative(cwd, file).startsWith("..") ? relative(cwd, file) : file).replace(/\\/g, "/");
-          if (!touched.includes(shown)) touched.push(shown);
-        }
+        if (typeof file === "string") touch(file);
       }
     }
   }

@@ -85,6 +85,33 @@ test("before compaction a handoff records the last requests and the files writte
   assert.match(taken, /Now add tests for the login page/);
 });
 
+test("a Codex CLI session file gives the same handoff summary as a Claude Code transcript", () => {
+  const file = transcript([
+    { timestamp: "2026-11-04T10:00:00.000Z", type: "session_meta", payload: { id: "s1", cwd: "/work/app" } },
+    { timestamp: "2026-11-04T10:00:01.000Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "<environment_context>cwd</environment_context>" }] } },
+    { timestamp: "2026-11-04T10:00:01.500Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "# AGENTS.md instructions for /work/app\n\nUse tabs." }] } },
+    { timestamp: "2026-11-04T10:00:02.000Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Add a login page with email and password fields" }] } },
+    { timestamp: "2026-11-04T10:00:03.000Z", type: "response_item", payload: { type: "custom_tool_call", status: "completed", call_id: "c1", name: "apply_patch", input: "*** Begin Patch\n*** Add File: src/login.tsx\n+export {};\n*** End Patch" } },
+    { timestamp: "2026-11-04T10:00:04.000Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Now add tests for the login page" }] } },
+    { timestamp: "2026-11-04T10:00:05.000Z", type: "response_item", payload: { type: "custom_tool_call", status: "completed", call_id: "c2", name: "apply_patch", input: "*** Begin Patch\n*** Update File: test/login.test.tsx\n@@\n-old\n+new\n*** End Patch" } },
+  ]);
+  const summary = summarizeTranscript(file, { cwd: "/work/app" });
+  assert.deepEqual(summary.files, ["src/login.tsx", "test/login.test.tsx"]);
+  assert.deepEqual(summary.asks, ["Add a login page with email and password fields", "Now add tests for the login page"]);
+});
+
+test("Codex CLI patches sent as function calls and user messages stored as event messages are read too", () => {
+  const file = transcript([
+    { timestamp: "2026-11-04T10:00:00.000Z", type: "event_msg", payload: { type: "user_message", message: "Add a settings page" } },
+    { timestamp: "2026-11-04T10:00:01.000Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Add a settings page" }] } },
+    { timestamp: "2026-11-04T10:00:02.000Z", type: "response_item", payload: { type: "function_call", name: "shell", call_id: "c1", arguments: JSON.stringify({ command: ["apply_patch", "*** Begin Patch\n*** Add File: src/settings.tsx\n+export {};\n*** End Patch"] }) } },
+    { timestamp: "2026-11-04T10:00:03.000Z", type: "event_msg", payload: { type: "user_message", message: "Now test it" } },
+  ]);
+  const summary = summarizeTranscript(file, { cwd: "/work/app" });
+  assert.deepEqual(summary.files, ["src/settings.tsx"]);
+  assert.deepEqual(summary.asks, ["Add a settings page", "Now test it"]);
+});
+
 test("after compaction the session start hook brings the memory back, and says why", () => {
   const dir = fresh();
   put(dir, "db", "The project database is Postgres 16 running in Docker.");
