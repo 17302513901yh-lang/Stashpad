@@ -54,8 +54,9 @@ Decided by: the team in the planning call
 
 The first line is the choice; `Why:`, `Rejected:` and `Decided by:` are optional and come in this order. Recall and
 the brief show it as `We use Postgres for the main database. (rejected: SQLite, MongoDB; why: several workers write at
-the same time)`, so an agent that is about to propose SQLite sees that it lost, and why. A prompt that asks why (or
-about a decision, choice, convention or policy) puts matching decisions first.
+the same time)`, so an agent that is about to propose SQLite sees that it lost, and why: a request that names a
+rejected option is enough to bring the decision up. A prompt that asks why (or about a decision, choice, convention
+or policy) puts matching decisions first.
 
 ```bash
 stashpad decide "We use Postgres for the main database" --why "several workers write at the same time" --rejected "SQLite, MongoDB"

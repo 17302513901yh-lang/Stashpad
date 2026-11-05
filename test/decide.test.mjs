@@ -50,6 +50,7 @@ test("recall shows why and what lost, and a why question puts decisions first", 
   const dir = fresh();
   saveMemory(dir, { id: "db-choice", kind: "decision", text: decisionBody({ choice: "We use Postgres for the main database.", why: "several workers write at once", rejected: "SQLite" }), sourceType: "user", sourceRef: "t" });
   saveMemory(dir, { id: "db-host", kind: "fact", text: "The postgres server for the main database runs on the staging host.", sourceType: "user", sourceRef: "t" });
+  assert.deepEqual(recall(dir, "move the reporting jobs over to sqlite").hits, ["db-choice"], "naming a rejected option is enough");
   const proposal = recall(dir, "switch the main database to sqlite");
   assert.match(proposal.text, /db-choice: We use Postgres for the main database\. \(rejected: SQLite; why: several workers write at once\)/);
   const why = recall(dir, "why did we pick postgres for the reporting service");

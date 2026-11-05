@@ -4,7 +4,7 @@
 import { DATA_LABEL } from "./security.mjs";
 import { readMemory, searchMemories } from "./store.mjs";
 import { parseMemory } from "./memory-format.mjs";
-import { WHY_QUESTION, decisionLine } from "./decisions.mjs";
+import { WHY_QUESTION, decisionLine, parseDecision } from "./decisions.mjs";
 import { keyTerms } from "./search.mjs";
 import { anchorContext, anchorNote, checkAnchors, projectRoot, readAnchors } from "./anchors.mjs";
 
@@ -13,6 +13,18 @@ export const DEFAULT_RECALL_CHARS = 700;
 function oneLine(text, max) {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length <= max ? flat : `${flat.slice(0, max - 1).trimEnd()}…`;
+}
+
+// A request that names an option a decision rejected ("switch to SQLite") should see that decision,
+// even on one shared word: that is the moment an agent is about to undo it.
+function namesRejected(dir, hit, exact) {
+  if (hit.kind !== "decision" || exact.length === 0) return false;
+  try {
+    const lost = new Set(keyTerms((parseDecision(parseMemory(readMemory(dir, hit.id).text).body)?.rejected ?? []).join(" ")));
+    return exact.some((term) => lost.has(term));
+  } catch {
+    return false;
+  }
 }
 
 // A decision with its reason and the options that lost, when it follows the decision layout.
@@ -47,7 +59,7 @@ export function recall(dir, prompt, { limit = 3, maxChars = DEFAULT_RECALL_CHARS
     .filter((r) => !skip.has(r.id))
     .filter((r) => {
       const exact = r.matched.filter((m) => !m.endsWith("(synonym)") && m.length >= 4);
-      return exact.length >= 2 || (terms.size <= 2 && exact.length >= 1) || (why && r.kind === "decision" && exact.length >= 1);
+      return exact.length >= 2 || (terms.size <= 2 && exact.length >= 1) || (why && r.kind === "decision" && exact.length >= 1) || namesRejected(dir, r, exact);
     })
     .sort((a, b) => (why ? (b.kind === "decision") - (a.kind === "decision") : 0))
     .slice(0, limit);
