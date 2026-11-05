@@ -35,6 +35,7 @@ import { withStoreLock } from "./lock.mjs";
 import { keyFor, openLine, readData, sealFor, sealLine } from "./vault.mjs";
 import { gateReason, relatedTo, similarity } from "./gate.mjs";
 import { autoSnapshot, prepareForWrite } from "./safety.mjs";
+import { settleRequested } from "./anchors.mjs";
 
 export { StoreError };
 
@@ -555,6 +556,8 @@ function acceptPendingUnlocked(dir, id) {
   const written = commitMemory(dir, { ...meta, last_confirmed_at: todayIso() }, parseMemory(text).body);
   rmSync(path);
   appendAudit(dir, { action: "accepted", id, source_type: meta.source_type, source_ref: meta.source_ref });
+  // Files the agent named are read now, when a person accepted the memory, not when it was proposed.
+  settleRequested(dir, id, true);
   return written;
 }
 
@@ -569,6 +572,7 @@ function rejectPendingUnlocked(dir, id, reason = null) {
   mkdirSync(folder, { recursive: true });
   const to = uniquePath(folder, basename(from));
   moveFile(from, to);
+  if (!id.startsWith("forget-")) settleRequested(dir, id, false);
   appendAudit(dir, { action: "rejected", id, reason });
   return to;
 }

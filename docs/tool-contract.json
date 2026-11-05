@@ -37,6 +37,7 @@
         "text"
       ],
       "arguments": [
+        "files",
         "id",
         "kind",
         "source_ref",
@@ -89,5 +90,5 @@
       ]
     }
   ],
-  "hash": "044bad883141e30e993e51ad79bac3da4a689405351e15633a89178df44157e3"
+  "hash": "5cddd71abea724162cf274a47f790d45e591d9ca3003a2edc79dd814f7b205c6"
 }

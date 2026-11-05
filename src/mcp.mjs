@@ -15,6 +15,7 @@ import {
 } from "./store.mjs";
 import { createHandoff, listHandoffs, claimHandoff } from "./handoff.mjs";
 import { giveFeedback } from "./feedback.mjs";
+import { checkAnchors, checkRequested, requestAnchors } from "./anchors.mjs";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_INFO = { name: "stashpad", version: VERSION };
@@ -40,7 +41,7 @@ export const TOOLS = [
   {
     name: "stashpad_get",
     annotations: { readOnlyHint: true, openWorldHint: false },
-    description: "Read one memory by id, with its source, dates and text.",
+    description: "Read one memory by id, with its source, dates and text, and whether the files it is anchored to changed since it was saved.",
     inputSchema: {
       type: "object",
       properties: { id: { type: "string", description: "The memory id from stashpad_search." } },
@@ -60,7 +61,7 @@ export const TOOLS = [
     name: "stashpad_save",
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     description:
-      "Propose a new memory. It is not stored or searchable until a person accepts it. Give the source of the claim.",
+      "Propose a new memory. It is not stored or searchable until a person accepts it. Give the source of the claim. Name the files it is about in files, so recall can say when they change.",
     inputSchema: {
       type: "object",
       properties: {
@@ -69,6 +70,12 @@ export const TOOLS = [
         text: { type: "string", description: "The memory, in plain words." },
         source_ref: { type: "string", description: "Where the claim comes from, one line." },
         supersedes: { type: "string", description: "Id of the memory this one replaces, if any." },
+        files: {
+          type: "array",
+          items: { type: "string" },
+          maxItems: 20,
+          description: "Project-relative paths of the files or folders (ending in /) this memory is about. They are read when a person accepts it.",
+        },
       },
       required: ["id", "kind", "text", "source_ref"],
     },
@@ -171,11 +178,18 @@ function callTool(name, args, dir) {
         requireArgs(name, args, ["id"]);
         const { text } = readMemory(dir, String(args.id));
         const { meta, body } = parseMemory(text);
+        let anchored = null;
+        try {
+          anchored = checkAnchors(dir, String(args.id));
+        } catch {
+          anchored = null;
+        }
         return jsonResult({
           label: DATA_LABEL,
           reads_like_instruction: findInstructionLikeText(body),
           ...meta,
           body,
+          ...(anchored ? { files: anchored.files } : {}),
         });
       }
       case "stashpad_recent": {
@@ -189,6 +203,8 @@ function callTool(name, args, dir) {
       }
       case "stashpad_save": {
         requireArgs(name, args, ["id", "kind", "text", "source_ref"]);
+        // Paths only: they are checked now and read when a person accepts the memory.
+        const files = args.files === undefined ? [] : checkRequested(Array.isArray(args.files) ? args.files.map(String) : [String(args.files)]);
         // Source type is fixed: an agent write is never a user statement.
         const result = saveMemory(dir, {
           id: String(args.id),
@@ -198,6 +214,7 @@ function callTool(name, args, dir) {
           sourceRef: String(args.source_ref),
           supersedes: args.supersedes ? String(args.supersedes) : null,
         });
+        if (files.length) requestAnchors(dir, String(args.id), files);
         const hint =
           result.maybe_replaces.length > 0
             ? ` It looks related to: ${result.maybe_replaces.map((c) => c.id).join(", ")}. If it replaces one, propose it again with supersedes set to that id.`

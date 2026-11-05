@@ -9,6 +9,7 @@
 - **The handoff reads Codex CLI sessions:** patches sent through a shell or function call, and user messages stored only as events, now show up in the summary before compaction (#28).
 - **`stashpad export --format markdown`:** one readable Markdown file, current memories first and ended ones in their own section with `--all` (#29).
 - **Recall once per session:** the prompt hook no longer pastes the same memories into every prompt of a long session. After compaction or `/clear` they can be given again. Session files hold ids only, stay out of git and are removed after 7 days.
+- **File anchors:** a memory can name the files or folders it is about (`stashpad save … --files`, `stashpad anchor <id> <path>`, `files` in `stashpad_save`). Recall, the brief and `stashpad_get` say when those files changed since the memory was saved, follow a file that moved, and skip a memory whose files are all gone. `stashpad anchors --changed` lists them, lint reports `anchor-changed` and `anchor-gone`, and `stashpad confirm <id>` re-anchors. Anchors live in `anchors.json` next to the memories; memory files do not change. An agent's files are read only when a person accepts its memory. Paths stay inside the project (no `..`, no links out). The tool contract changed: `stashpad_save` has an optional `files` argument.
 - **`stashpad feedback --last`:** feedback on the memory the prompt hook gave last, without looking up its id; when it gave several, they are listed and you pick one.
 
 ### Thanks

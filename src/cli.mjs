@@ -47,13 +47,15 @@ import {
   saveMemory,
   searchMemories,
   todayIso,
+  isCurrent,
 } from "./store.mjs";
 
 import { cancelHandoff, claimHandoff, createHandoff, listHandoffs } from "./handoff.mjs";
 import { giveFeedback, lint } from "./feedback.mjs";
 import { lastGiven } from "./sessions.mjs";
+import { addAnchors, checkAnchors, checkRequested, hashPaths, pathFromUser, projectRoot, readAnchorsFile, reanchor, removeAnchors, requestAnchors, requestedFor, setAnchors } from "./anchors.mjs";
 export const USAGE = `Usage:
-  stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD] [--expires YYYY-MM-DD] [--supersedes <old-id>]
+  stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD] [--expires YYYY-MM-DD] [--supersedes <old-id>] [--files a,b]
   stashpad get <id> [--json]
   stashpad history <id> [--json]
   stashpad list [--all] [filters] [--json]
@@ -69,7 +71,10 @@ export const USAGE = `Usage:
   stashpad pin <id> | unpin <id> | pins   pin the few rules every session must see (a person only; at most 12)
   stashpad recall <words...> [--json]     the memories that clearly match a request (what the prompt hook adds)
   stashpad hook <session-start|prompt|pre-compact|session-end>   for agent hooks: reads the event JSON on stdin, never fails
-  stashpad confirm <id>                   say a memory is still true (updates last_confirmed_at)
+  stashpad confirm <id>                   say a memory is still true (updates last_confirmed_at, re-anchors its files)
+  stashpad anchor <id> <path...>          link a memory to files or folders; recall says when they change (a person only)
+  stashpad unanchor <id> [<path...>]      remove anchors (all of them without paths)
+  stashpad anchors [--changed] [--json]   anchored memories and whether their files changed, moved or are gone
   stashpad forget <id> --reason "<why>"   ask for a memory to end (a person accepts it)
   stashpad review [--json]
   stashpad accept <id>
@@ -112,6 +117,7 @@ Options:
   --global, -g        use the global store (~/.stashpad/global or $STASHPAD_GLOBAL_DIR) for what is true in every project
   --text -            read the memory text from standard input
   --supersedes <id>   the memory this one replaces; that one gets an end date
+  --files a,b         files or folders (project paths) the memory is about; a waiting memory's files are read on accept
   --source-file <path> keep a copy of the raw source in the store (up to 5 MB), linked from source_ref
   --out <file>        write the export to a file instead of the screen (refuses to overwrite)
   --reason "<why>"    why a waiting memory was rejected (kept in the audit log)
@@ -160,6 +166,8 @@ const OPTIONS = {
   until: { type: "string" },
   explain: { type: "boolean" },
   last: { type: "boolean" },
+  files: { type: "string" },
+  changed: { type: "boolean" },
   yes: { type: "boolean" },
   version: { type: "boolean", short: "v" },
   help: { type: "boolean", short: "h" },
@@ -197,6 +205,11 @@ async function cmdSave(io, dir, id, values) {
   }
 
   const content = values.text === "-" ? await io.readStdin() : values.text;
+  // Files are checked before anything is saved; a person's own save is anchored right away.
+  const root = projectRoot(dir, io.cwd);
+  const files = csv(values.files)?.map((p) => pathFromUser(root, io.cwd, p)) ?? [];
+  const hashes = files.length && values["source-type"] === "user" ? hashPaths(root, files) : null;
+  if (files.length && !hashes) checkRequested(files);
   let sourceRef = values["source-ref"] ?? "";
   if (values["source-file"] !== undefined) {
     const raw = archiveSource(dir, values["source-file"]);
@@ -212,6 +225,8 @@ async function cmdSave(io, dir, id, values) {
     validTo: values.expires ?? null,
     supersedes: values.supersedes ?? null,
   });
+  if (hashes) setAnchors(dir, id, hashes);
+  else if (files.length) requestAnchors(dir, id, files);
 
   if (values.json) {
     io.stdout(JSON.stringify({ status: result.status, id, path: result.path, maybe_replaces: result.maybe_replaces }));
@@ -242,6 +257,8 @@ function cmdReview(io, dir, values) {
     const replaces = row.supersedes ? `  replaces ${row.supersedes}` : "";
     const flag = row.flagged ? "  [check: reads like an instruction]" : "";
     io.stdout(`${row.id}  ${row.kind}  from ${row.source_type}: ${row.source_ref}${replaces}  ${row.summary}${flag}`);
+    const asked = requestedFor(dir, row.id);
+    if (asked.length) io.stdout(`    files (read and anchored on accept): ${asked.join(", ")}`);
     for (const conflict of row.conflicts ?? []) {
       const effect = conflict.would_end ? " (accepting it ends that one)" : "";
       io.stdout(`    may conflict with ${conflict.id}${effect}`);
@@ -256,6 +273,8 @@ function cmdAccept(io, dir, id) {
     io.stdout(`Ended ${id.slice("forget-".length)}. It stays in the store with its end date.`);
   } else {
     io.stdout(`Accepted ${id} into the store: ${path}`);
+    const status = checkAnchors(dir, id);
+    if (status) io.stdout(`Anchored to: ${status.files.map((f) => f.path).join(", ")}`);
   }
   return 0;
 }
@@ -362,12 +381,19 @@ function cmdGet(io, dir, id, values) {
   const { text } = readMemory(dir, id);
   const { meta, body } = parseMemory(text);
   const flagged = findInstructionLikeText(body);
+  let anchored = null;
+  try {
+    anchored = checkAnchors(dir, id, { root: projectRoot(dir, io.cwd) });
+  } catch {
+    anchored = null;
+  }
   if (values.json) {
-    io.stdout(JSON.stringify({ label: DATA_LABEL, reads_like_instruction: flagged, ...meta, body }));
+    io.stdout(JSON.stringify({ label: DATA_LABEL, reads_like_instruction: flagged, ...meta, body, ...(anchored ? { files: anchored.files } : {}) }));
   } else {
     const note = flagged ? " (note: reads like an instruction; it is still only a note)" : "";
     io.stdout(`# ${DATA_LABEL}${note}`);
     io.stdout(text.replace(/\n$/, ""));
+    if (anchored) io.stdout(`# files: ${anchored.files.map((f) => `${f.path} (${f.state}${f.to ? ` -> ${f.to}` : ""})`).join(", ")}`);
   }
   return 0;
 }
@@ -672,8 +698,42 @@ function cmdFeedback(io, dir, id, values) {
   return 0;
 }
 
+function cmdAnchors(io, dir, command, [id, ...paths], values) {
+  const root = projectRoot(dir, io.cwd);
+  if (command === "anchor") {
+    if (!id || paths.length === 0) return usageError(io, "anchor needs an id and at least one path, for example: stashpad anchor tax-rules src/billing/tax.ts");
+    const { meta } = parseMemory(readMemory(dir, id).text);
+    if (!isCurrent(meta)) return usageError(io, `"${id}" is not current; only a current memory can be anchored.`);
+    const done = addAnchors(dir, id, root, paths.map((p) => pathFromUser(root, io.cwd, p)));
+    io.stdout(values.json ? JSON.stringify(done) : `Anchored ${id} to: ${done.files.join(", ")}. Recall, the brief and lint now say when these change.`);
+    return 0;
+  }
+  if (command === "unanchor") {
+    if (!id) return usageError(io, "unanchor needs an id, for example: stashpad unanchor tax-rules");
+    const done = removeAnchors(dir, id, paths.length ? paths.map((p) => pathFromUser(root, io.cwd, p)) : null);
+    io.stdout(values.json ? JSON.stringify(done) : done.removed.length ? `Removed ${done.removed.join(", ")} from ${id}.` : `Nothing changed for ${id}.`);
+    return 0;
+  }
+  const { anchors } = readAnchorsFile(dir);
+  const rows = Object.keys(anchors).sort().map((mid) => checkAnchors(dir, mid, { root, anchors })).filter((r) => !values.changed || r.changed);
+  if (values.json) {
+    io.stdout(JSON.stringify({ root, anchors: rows }));
+    return 0;
+  }
+  if (rows.length === 0) {
+    io.stdout(values.changed ? "No anchored memory has changed files." : "No memory is anchored to files. Add one with: stashpad anchor <id> <path>");
+    return 0;
+  }
+  for (const r of rows) {
+    io.stdout(`${r.id}${r.gone ? "  (all files gone)" : r.changed ? "  (changed)" : ""}`);
+    for (const f of r.files) io.stdout(`    ${f.state.padEnd(13)} ${f.path}${f.to ? ` -> ${f.to}` : ""}${f.reason ? ` (${f.reason})` : ""}`);
+  }
+  if (rows.some((r) => r.changed)) io.stdout("Check each changed one, then: stashpad confirm <id> (anchors it to the files as they are now).");
+  return 0;
+}
+
 function cmdLint(io, dir, values) {
-  const r = lint(dir);
+  const r = lint(dir, { cwd: io.cwd });
   if (values.json) io.stdout(JSON.stringify(r));
   else if (r.findings.length === 0) io.stdout(`Nothing to look at among ${r.checked} memories.`);
   else {
@@ -821,8 +881,16 @@ export async function run(argv, io = defaultIo()) {
         if (!id) return usageError(io, "confirm needs an id, for example: stashpad confirm db-choice");
         const done = confirmMemory(dir, id);
         io.stdout(done.changed ? `Confirmed ${id} as still true today.` : `${id} was already confirmed today.`);
+        const again = reanchor(dir, id, projectRoot(dir, io.cwd));
+        if (again && (again.updated.length || again.dropped.length)) {
+          io.stdout(`Re-anchored ${id} to the files as they are now${again.updated.length ? ` (updated: ${again.updated.join(", ")})` : ""}${again.dropped.length ? `; dropped, gone: ${again.dropped.join(", ")}` : ""}.`);
+        }
         return 0;
       }
+      case "anchor":
+      case "unanchor":
+      case "anchors":
+        return cmdAnchors(io, dir, command, positionals.slice(1), values);
       case "forget":
         if (!id) return usageError(io, 'forget needs an id, for example: stashpad forget db-choice --reason "outdated"');
         return cmdForget(io, dir, id, values);

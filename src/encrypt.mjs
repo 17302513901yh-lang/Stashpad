@@ -28,7 +28,7 @@ function dataFiles(root) {
   const files = [];
   for (const name of readdirSync(root)) {
     const path = join(root, name);
-    if ((name.endsWith(".md") || name === "pins.json") && isFile(path)) files.push({ path, kind: "file" });
+    if ((name.endsWith(".md") || name === "pins.json" || name === "anchors.json") && isFile(path)) files.push({ path, kind: "file" });
     if ((name === "audit.jsonl" || name === "feedback.jsonl" || name === "misses.jsonl") && isFile(path)) files.push({ path, kind: "lines" });
   }
   // Hook state: session files are sealed, the folder's .gitignore stays plain.

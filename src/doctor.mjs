@@ -13,6 +13,7 @@ import { parseMemory } from "./memory-format.mjs";
 import { encryptionOf, keyFor, openLine, readData } from "./vault.mjs";
 import { plainFilesInEncryptedStore } from "./encrypt.mjs";
 import { STORE_FORMAT, VERSION } from "./version.mjs";
+import { ANCHORS_FILE, readAnchorsFile } from "./anchors.mjs";
 
 const ok = (name, detail) => ({ name, status: "ok", detail });
 const warn = (name, detail, fix) => ({ name, status: "warn", detail, fix });
@@ -142,6 +143,14 @@ function checkStore(dir) {
   const synonyms = loadStoreSynonyms(dir);
   if (synonyms.problem !== null) {
     checks.push(warn("synonyms", synonyms.problem, "Fix or delete synonyms.json. Search works without it."));
+  }
+  if (existsSync(join(dir, ANCHORS_FILE))) {
+    try {
+      const { anchors } = readAnchorsFile(dir);
+      checks.push(ok("anchors", `${Object.keys(anchors).length} memory/memories anchored to files (stashpad anchors)`));
+    } catch (error) {
+      checks.push(warn("anchors", error.message, "Fix anchors.json or restore it from a snapshot. Recall works without it."));
+    }
   }
   checks.push(ok("snapshots", `${listSnapshots(dir).length} snapshot(s)`));
   if (isInsideInstall(dir)) {

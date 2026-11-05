@@ -162,6 +162,7 @@ function given(state, ids) {
 // Returns the text to print (may be empty). Never throws.
 export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS, globalDir = null } = {}) {
   const global = globalDir && resolve(globalDir) !== resolve(dir) && exists(globalDir) ? globalDir : null;
+  const cwd = typeof input.cwd === "string" && isAbsolute(input.cwd) ? input.cwd : process.cwd();
   try {
     switch (event) {
       case "session-start": {
@@ -174,18 +175,18 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
           if (input.source === "compact" || input.source === "clear") s.given = [];
         });
         const after = input.source === "compact" ? "Context was just compacted. Your Stashpad memory, again:\n" : "";
-        if (!global) return after + buildBrief(dir, { maxChars }).text;
+        if (!global) return after + buildBrief(dir, { maxChars, cwd }).text;
         // Project first; the global store (true in every project) gets a third of the room.
-        const project = buildBrief(dir, { maxChars: Math.floor(maxChars * 0.67) }).text;
-        const everywhere = buildBrief(global, { maxChars: Math.floor(maxChars * 0.33) }).text.split("\n").slice(1);
+        const project = buildBrief(dir, { maxChars: Math.floor(maxChars * 0.67), cwd }).text;
+        const everywhere = buildBrief(global, { maxChars: Math.floor(maxChars * 0.33), cwd }).text.split("\n").slice(1);
         return `${after}${project}\nGlobal store (all projects):\n${everywhere.join("\n")}`;
       }
       case "prompt": {
         // Memories this session already got from this hook are not pasted again.
-        const local = recall(dir, input.prompt ?? "", { exclude: [...readPins(dir), ...safeGiven(dir, input)] });
+        const local = recall(dir, input.prompt ?? "", { exclude: [...readPins(dir), ...safeGiven(dir, input)], cwd });
         note(dir, input, (s) => given(s, local.hits));
         if (!global) return local.text;
-        const wide = recall(global, input.prompt ?? "", { exclude: [...readPins(global), ...safeGiven(global, input)], limit: Math.max(0, 3 - local.hits.length) });
+        const wide = recall(global, input.prompt ?? "", { exclude: [...readPins(global), ...safeGiven(global, input)], limit: Math.max(0, 3 - local.hits.length), cwd });
         note(global, input, (s) => given(s, wide.hits));
         if (!wide.text) return local.text;
         if (!local.text) return wide.text.replace("Stashpad memories", "Stashpad global memories");

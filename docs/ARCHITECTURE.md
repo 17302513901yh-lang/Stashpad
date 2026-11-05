@@ -53,6 +53,8 @@ graph LR
   sources/              raw source copies (never change)
   audit.jsonl           every change, with a short content hash
   synonyms.json         optional word groups for search
+  pins.json             pinned memory ids (a person only)
+  anchors.json          files each memory is about, with their hashes (docs/FORMAT.md)
   .stashpad-store.json  format marker
   .sessions/            hook state per agent session (ids only, git-ignored, pruned after 7 days)
   .snapshots/           snapshots (daily automatic, manual, before restore and migrate)

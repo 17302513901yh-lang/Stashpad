@@ -40,6 +40,35 @@ Nothing an agent or a web page writes can claim to be user-stated.
   multi-line values. Quotes are optional. This keeps diffs small and readable.
 - Dates are real calendar dates in `YYYY-MM-DD`.
 
+## Files a memory is about (anchors.json)
+
+A memory can be anchored to the files or folders it talks about, so recall, the brief and lint can say when they
+changed. The memory file does not change: anchors live next to the memories in `anchors.json`, like `pins.json`:
+
+```json
+{
+  "anchors": { "tax-rules": { "src/billing/tax.ts": "2f1c…", "src/billing/": "dir:9ab0…" } },
+  "requested": { "agent-note": ["src/db/schema.ts"] }
+}
+```
+
+- **Paths** are relative to the project: the folder that holds `.stashpad/memories` (else the git root of the current
+  folder). A folder ends in `/`. At most 20 per memory.
+- **Hashes** are git blob ids over LF line endings (so a Windows and a Linux checkout agree, with or without git). A
+  folder's hash covers the sorted list of its files and their hashes, so an added file counts too (at most 2000 files;
+  links, `.git` and `node_modules` are skipped).
+- **Who reads files:** Stashpad computes every hash itself. A person anchors with `stashpad save … --files a,b`,
+  `stashpad anchor <id> <path...>` or `stashpad confirm <id>` (which re-anchors to the files as they are now). An
+  agent can only ask (`stashpad_save` with `files`, kept under `requested`); the files are read when a person accepts
+  the memory and dropped when it is rejected.
+- **States:** same, changed, moved (the same content elsewhere in the project), moved and changed (the only file with
+  that name elsewhere), gone. Recall and the brief add a short note, skip a memory whose files are all gone, and
+  `stashpad lint` reports `anchor-changed` and `anchor-gone`. `stashpad anchors --changed` lists them.
+- **Safety:** paths in the file are treated as untrusted. Absolute paths, drive letters, UNC paths, `..`, device names
+  and `.git` are refused; the real path (links resolved) must stay inside the project; only regular files up to 5 MB
+  and folders are read. No git command is run. The file is sealed when the store is encrypted and is part of
+  snapshots.
+
 ## Check a folder
 
 ```bash

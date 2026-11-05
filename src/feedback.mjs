@@ -13,6 +13,7 @@ import { findInstructionLikeText } from "./security.mjs";
 import { isCurrent, queueForget, readEntries, readMemory, staleMemories, todayIso } from "./store.mjs";
 import { listHandoffs } from "./handoff.mjs";
 import { readPins } from "./pins.mjs";
+import { anchorContext, checkAnchors, projectRoot, readAnchorsFile } from "./anchors.mjs";
 
 export const SIGNALS = ["helpful", "stale", "wrong"];
 const FEEDBACK = "feedback.jsonl";
@@ -58,7 +59,7 @@ const addDays = (iso, days) => {
   return d.toISOString().slice(0, 10);
 };
 
-export function lint(dir, { today = todayIso(), staleDays = 180, soonDays = 14, now = new Date() } = {}) {
+export function lint(dir, { today = todayIso(), staleDays = 180, soonDays = 14, now = new Date(), cwd = process.cwd() } = {}) {
   const findings = [];
   const add = (rule, id, message) => findings.push({ rule, id, message });
   const { entries } = readEntries(dir);
@@ -95,6 +96,23 @@ export function lint(dir, { today = todayIso(), staleDays = 180, soonDays = 14, 
     const entry = byId.get(id);
     if (!entry) add("pin-missing", id, `pinned, but no memory file has this id: stashpad unpin ${id}.`);
     else if (!isCurrent(entry.meta, today)) add("pin-ended", id, `pinned, but no longer current, so the brief skips it: stashpad unpin ${id}.`);
+  }
+  // Memories anchored to files that changed, moved or are gone since a person last confirmed them.
+  try {
+    const { anchors } = readAnchorsFile(dir);
+    const root = projectRoot(dir, cwd);
+    const context = anchorContext(root);
+    for (const e of current) {
+      if (!anchors[e.id]) continue;
+      const status = checkAnchors(dir, e.id, { root, anchors, context });
+      if (status.gone) add("anchor-gone", e.id, `every file it is about is gone (${status.files.map((f) => f.path).join(", ")}): end it with stashpad forget ${e.id}, or anchor it again.`);
+      else if (status.changed) {
+        const what = status.files.filter((f) => f.state !== "same").map((f) => (f.to ? `${f.path} -> ${f.to}` : `${f.path} ${f.state}`)).join(", ");
+        add("anchor-changed", e.id, `files changed since it was saved (${what}): check it, then stashpad confirm ${e.id} (re-anchors), or supersede it.`);
+      }
+    }
+  } catch (error) {
+    add("anchors-unreadable", "anchors.json", error.message);
   }
   try {
     for (const h of listHandoffs(dir, { all: true, now }).handoffs) if (h.unread_past_expiry) add("handoff-expired", h.id, "handoff passed its expiry unread; the work it describes may still be open.");
