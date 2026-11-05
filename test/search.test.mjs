@@ -82,6 +82,36 @@ test("tokenize splits on non-letters, lowercases and drops one-letter words", ()
   assert.deepEqual(tokenize("A Dark-theme, in SQLite!"), ["dark", "theme", "in", "sqlite"]);
 });
 
+test("tokenize folds combining accents on Latin letters only", () => {
+  assert.deepEqual(tokenize("Beëindigen café"), ["beeindigen", "cafe"]);
+  assert.deepEqual(tokenize("cafe\u0301"), ["cafe"]);
+});
+
+test("search matches Latin words with or without accents", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "stashpad-accents-"));
+  saveMemory(dir, {
+    id: "accent-note",
+    kind: "fact",
+    text: "The café is open.",
+    sourceType: "user",
+    sourceRef: "accent search test",
+  }, "2026-10-01");
+  saveMemory(dir, {
+    id: "plain-note",
+    kind: "fact",
+    text: "The cafe is open.",
+    sourceType: "user",
+    sourceRef: "accent search test",
+  }, "2026-10-01");
+
+  for (const [query, expectedId] of [["cafe", "accent-note"], ["café", "plain-note"]]) {
+    const { io, out } = harness();
+    assert.equal(await run(["search", query, "--json", "--dir", dir], io), 0);
+    const ids = JSON.parse(out[0]).map((result) => result.id);
+    assert.ok(ids.includes(expectedId), `query ${query} should match ${expectedId}`);
+  }
+});
+
 test("the expected memory ranks first for each query in the set of 20", async () => {
   const dir = freshDirWithNotes();
   for (const [query, expected] of QUERIES) {

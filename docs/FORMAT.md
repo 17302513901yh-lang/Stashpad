@@ -53,6 +53,8 @@ The check exits with code 1 and names each problem and its file.
 
 Search matches words. A note can help itself by ending with a line such as `Also: db, datastore`. Those words are part of the text and are searched like any other.
 
+Combining accents on Latin letters are ignored, so a search for `cafe` also matches `café`; accents in other writing systems remain significant.
+
 A store can also hold `synonyms.json` next to the memories (it is not a memory file and is ignored by the format checks):
 
 ```json

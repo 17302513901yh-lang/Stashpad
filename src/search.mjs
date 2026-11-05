@@ -10,7 +10,8 @@ const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hang
 
 export function tokenize(text) {
   const tokens = [];
-  for (const piece of text.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+  const folded = text.normalize("NFD").replace(/(\p{Script=Latin})\p{M}+/gu, "$1").normalize("NFC");
+  for (const piece of folded.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
     if (piece === "") continue;
     if (!CJK.test(piece)) {
       if (piece.length >= 2) tokens.push(piece);
