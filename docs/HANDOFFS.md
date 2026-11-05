@@ -39,7 +39,9 @@ counts. `wrong` also queues an ending request, which a person accepts like any o
 `stashpad lint` lists what deserves a look, by rules only: memories marked stale or wrong, agent memories nobody
 confirmed for 180 days, memories that end within 14 days, broken supersede links, text that reads like an order,
 handoffs that passed their expiry unread, pinned memories that are no longer current (`pin-ended`), and pins whose
-memory file is gone (`pin-missing`). Each pin rule names the fix, `stashpad unpin <id>`. It changes nothing.
+memory file is gone (`pin-missing`). Each pin rule names the fix, `stashpad unpin <id>`. Memories anchored to files
+that changed or are gone (`anchor-changed`, `anchor-gone`, fix: `stashpad confirm <id>`), and agent memories that
+nothing showed to an agent for 90 days (`never-shown`, see `stashpad shown`). It changes nothing.
 
 ## Expiry
 

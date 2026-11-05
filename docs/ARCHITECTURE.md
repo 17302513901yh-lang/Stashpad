@@ -56,7 +56,8 @@ graph LR
   pins.json             pinned memory ids (a person only)
   anchors.json          files each memory is about, with their hashes (docs/FORMAT.md)
   .stashpad-store.json  format marker
-  .sessions/            hook state per agent session (ids only, git-ignored, pruned after 7 days)
+  .sessions/            hook state per agent session (ids only, git-ignored, pruned after 7 days),
+                        and shown.jsonl: which memory ids were shown to an agent, and how many characters
   .snapshots/           snapshots (daily automatic, manual, before restore and migrate)
   .stashpad.lock        only while a write is running
 ```

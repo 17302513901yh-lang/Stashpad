@@ -16,6 +16,7 @@ import {
 import { createHandoff, listHandoffs, claimHandoff } from "./handoff.mjs";
 import { giveFeedback } from "./feedback.mjs";
 import { checkAnchors, checkRequested, requestAnchors } from "./anchors.mjs";
+import { logShown } from "./shown.mjs";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_INFO = { name: "stashpad", version: VERSION };
@@ -173,7 +174,9 @@ function callTool(name, args, dir) {
           asOf: args.as_of ? String(args.as_of) : null,
         });
         if (results.length === 0) logMiss(dir, String(args.query));
-        return jsonResult({ label: DATA_LABEL, searched: total, results });
+        const reply = jsonResult({ label: DATA_LABEL, searched: total, results });
+        logShown(dir, { event: "mcp search", ids: results.map((r) => r.id), chars: reply.content[0].text.length });
+        return reply;
       }
       case "stashpad_get": {
         requireArgs(name, args, ["id"]);
@@ -185,13 +188,15 @@ function callTool(name, args, dir) {
         } catch {
           anchored = null;
         }
-        return jsonResult({
+        const reply = jsonResult({
           label: DATA_LABEL,
           reads_like_instruction: findInstructionLikeText(body),
           ...meta,
           body,
           ...(anchored ? { files: anchored.files } : {}),
         });
+        logShown(dir, { event: "mcp get", ids: [meta.id], chars: reply.content[0].text.length });
+        return reply;
       }
       case "stashpad_recent": {
         const limit = clampLimit(args.limit, 10, 50);
@@ -200,7 +205,9 @@ function callTool(name, args, dir) {
         const newest = [...rows]
           .sort((a, b) => (a.created_at === b.created_at ? a.id.localeCompare(b.id) : a.created_at < b.created_at ? 1 : -1))
           .slice(0, limit);
-        return jsonResult({ label: DATA_LABEL, memories: newest });
+        const reply = jsonResult({ label: DATA_LABEL, memories: newest });
+        logShown(dir, { event: "mcp recent", ids: newest.map((r) => r.id), chars: reply.content[0].text.length });
+        return reply;
       }
       case "stashpad_save": {
         requireArgs(name, args, ["id", "kind", "text", "source_ref"]);

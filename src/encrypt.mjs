@@ -36,7 +36,8 @@ function dataFiles(root) {
   if (isDir(sessions)) {
     for (const name of readdirSync(sessions)) {
       const path = join(sessions, name);
-      if (name.startsWith("session-") && name.endsWith(".json") && isFile(path)) files.push({ path, kind: "file" });
+      if (((name.startsWith("session-") && name.endsWith(".json")) || name === "last-shown.json") && isFile(path)) files.push({ path, kind: "file" });
+      if (name === "shown.jsonl" && isFile(path)) files.push({ path, kind: "lines" });
     }
   }
   for (const sub of ["pending", "rejected", "sources", "handoffs"]) {

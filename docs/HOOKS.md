@@ -22,6 +22,16 @@ Inside it, a tag that could pass for the agent app's own text (`</system-reminde
 
 The Claude Code plugin in this repository wires all four (`hooks/hooks.json`). The automatic handoff reads the end of the Claude Code transcript (`transcript_path`); other agents can pass the same JSON from their own hooks, or leave a note themselves with `stashpad handoff leave`.
 
+## What was shown
+
+```bash
+stashpad shown                     # the last 20 outputs: when, which event, which memory ids, how many characters
+stashpad shown --today             # or --since 2026-11-01, or --session <id>; --json for all of it
+stashpad shown --clear
+```
+
+Every hook output, MCP read (`stashpad_search`, `stashpad_get`, `stashpad_recent`) and `brief`, `recall`, `search` or `get` command adds one line to `<store>/.sessions/shown.jsonl`: the time, the session id, the event, the memory ids and the number of characters. Never the text of a memory or a prompt. The log is capped at 200 KB, sealed in an encrypted store and kept out of git. The total characters per session is an honest local cost number. `stashpad lint` uses the log for `never-shown`: an agent memory that nothing showed for 90 days (counted only once the log has run that long; a person's own memories, pinned ones and ones confirmed in that time are left out).
+
 ## Pinned rules
 
 ```bash

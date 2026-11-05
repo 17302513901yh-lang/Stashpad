@@ -10,6 +10,7 @@ import { recall } from "./recall.mjs";
 import { readPins } from "./pins.mjs";
 import { fence, findSecrets } from "./security.mjs";
 import { givenIds, updateSession } from "./sessions.mjs";
+import { logShown } from "./shown.mjs";
 import { existsSync as exists } from "node:fs";
 import { resolve } from "node:path";
 
@@ -176,22 +177,40 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
         });
         const after = input.source === "compact" ? "Context was just compacted. Your Stashpad memory, again:\n" : "";
         // Stashpad's own line stays outside the data block; everything recalled goes inside it.
-        if (!global) return after + fence(buildBrief(dir, { maxChars, cwd }).text);
+        if (!global) {
+          const brief = buildBrief(dir, { maxChars, cwd });
+          const out = after + fence(brief.text);
+          logShown(dir, { event: "session-start", ids: brief.ids, chars: out.length, session: input.session_id });
+          return out;
+        }
         // Project first; the global store (true in every project) gets a third of the room.
-        const project = buildBrief(dir, { maxChars: Math.floor(maxChars * 0.67), cwd }).text;
-        const everywhere = buildBrief(global, { maxChars: Math.floor(maxChars * 0.33), cwd }).text.split("\n").slice(1);
-        return after + fence(`${project}\nGlobal store (all projects):\n${everywhere.join("\n")}`);
+        const project = buildBrief(dir, { maxChars: Math.floor(maxChars * 0.67), cwd });
+        const wide = buildBrief(global, { maxChars: Math.floor(maxChars * 0.33), cwd });
+        const everywhere = wide.text.split("\n").slice(1).join("\n");
+        const out = after + fence(`${project.text}\nGlobal store (all projects):\n${everywhere}`);
+        logShown(dir, { event: "session-start", ids: project.ids, chars: out.length - everywhere.length, session: input.session_id });
+        logShown(global, { event: "session-start", ids: wide.ids, chars: everywhere.length, session: input.session_id });
+        return out;
       }
       case "prompt": {
         // Memories this session already got from this hook are not pasted again.
         const local = recall(dir, input.prompt ?? "", { exclude: [...readPins(dir), ...safeGiven(dir, input)], cwd });
         note(dir, input, (s) => given(s, local.hits));
-        if (!global) return fence(local.text);
+        const shown = (store, result, out) => {
+          if (result.hits.length) logShown(store, { event: "prompt", ids: result.hits, chars: out, session: input.session_id });
+        };
+        if (!global) {
+          const out = fence(local.text);
+          shown(dir, local, out.length);
+          return out;
+        }
         const wide = recall(global, input.prompt ?? "", { exclude: [...readPins(global), ...safeGiven(global, input)], limit: Math.max(0, 3 - local.hits.length), cwd });
         note(global, input, (s) => given(s, wide.hits));
-        if (!wide.text) return fence(local.text);
-        if (!local.text) return fence(wide.text.replace("Stashpad memories", "Stashpad global memories"));
-        return fence(`${local.text}\n${wide.text.split("\n").slice(2).join("\n")}`);
+        const extra = wide.text.split("\n").slice(2).join("\n");
+        const out = !wide.text ? fence(local.text) : !local.text ? fence(wide.text.replace("Stashpad memories", "Stashpad global memories")) : fence(`${local.text}\n${extra}`);
+        shown(dir, local, out.length - (wide.text ? extra.length : 0));
+        shown(global, wide, extra.length);
+        return out;
       }
       case "pre-compact":
       case "session-end": {

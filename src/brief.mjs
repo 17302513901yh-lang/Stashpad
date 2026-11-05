@@ -89,6 +89,7 @@ export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayI
   if (filesGone > 0) tailParts.push(`${filesGone} skipped because the files they are about are gone (stashpad anchors).`);
 
   const lines = [];
+  const ids = [];
   let used = head.length;
   let shown = 0;
   if (pinned.length > 0) {
@@ -100,6 +101,7 @@ export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayI
       pinLines.push(line);
       pinUsed += line.length + 1;
       shown += 1;
+      ids.push(entry.id);
     }
     if (pinLines.length > 1) {
       lines.push(...pinLines, "Other memories:");
@@ -113,12 +115,13 @@ export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayI
     lines.push(line);
     used += line.length + 1;
     shown += 1;
+    ids.push(entry.id);
   }
   const more = ordered.length + pinned.length - shown;
   if (more > 0) tailParts.unshift(`${more} more not shown; search for them.`);
 
   const text = [head, ...lines, ...tailParts].join("\n");
-  return { text, shown, omitted: more, waiting, held_back: heldBack, total: current.length, open_handoffs: handoff?.count ?? 0 };
+  return { text, shown, ids, omitted: more, waiting, held_back: heldBack, total: current.length, open_handoffs: handoff?.count ?? 0 };
 }
 
 const START = "<!-- stashpad:start -->";

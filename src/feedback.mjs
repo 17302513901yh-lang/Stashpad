@@ -13,6 +13,7 @@ import { findInstructionLikeText } from "./security.mjs";
 import { isCurrent, queueForget, readEntries, readMemory, staleMemories, todayIso } from "./store.mjs";
 import { listHandoffs } from "./handoff.mjs";
 import { readPins } from "./pins.mjs";
+import { lastShown } from "./shown.mjs";
 import { anchorContext, checkAnchors, projectRoot, readAnchorsFile } from "./anchors.mjs";
 
 export const SIGNALS = ["helpful", "stale", "wrong"];
@@ -59,7 +60,7 @@ const addDays = (iso, days) => {
   return d.toISOString().slice(0, 10);
 };
 
-export function lint(dir, { today = todayIso(), staleDays = 180, soonDays = 14, now = new Date(), cwd = process.cwd() } = {}) {
+export function lint(dir, { today = todayIso(), staleDays = 180, soonDays = 14, unusedDays = 90, now = new Date(), cwd = process.cwd() } = {}) {
   const findings = [];
   const add = (rule, id, message) => findings.push({ rule, id, message });
   const { entries } = readEntries(dir);
@@ -96,6 +97,18 @@ export function lint(dir, { today = todayIso(), staleDays = 180, soonDays = 14, 
     const entry = byId.get(id);
     if (!entry) add("pin-missing", id, `pinned, but no memory file has this id: stashpad unpin ${id}.`);
     else if (!isCurrent(entry.meta, today)) add("pin-ended", id, `pinned, but no longer current, so the brief skips it: stashpad unpin ${id}.`);
+  }
+  // Agent memories nothing has shown for 90 days: maybe no longer useful. Only once the log has run that long.
+  const shownLog = lastShown(dir);
+  const quiet = addDays(today, -unusedDays);
+  if (shownLog.since !== null && shownLog.since <= quiet) {
+    const pinned = new Set(pins);
+    for (const e of current) {
+      // Confirming it is how a person says "keep it", so a recent confirmation counts as use.
+      if (e.meta.source_type === "user" || pinned.has(e.id) || e.meta.created_at > quiet || e.meta.last_confirmed_at > quiet) continue;
+      const last = shownLog.last[e.id];
+      if (!last || last < quiet) add("never-shown", e.id, `not shown to an agent for ${unusedDays}+ days${last ? ` (last ${last})` : ""}: keep it (stashpad confirm ${e.id}), or end it (stashpad forget ${e.id} --reason "unused").`);
+    }
   }
   // Memories anchored to files that changed, moved or are gone since a person last confirmed them.
   try {

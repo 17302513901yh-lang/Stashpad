@@ -53,6 +53,7 @@ import {
 import { cancelHandoff, claimHandoff, createHandoff, listHandoffs } from "./handoff.mjs";
 import { giveFeedback, lint } from "./feedback.mjs";
 import { lastGiven } from "./sessions.mjs";
+import { clearShown, logShown, shownReport } from "./shown.mjs";
 import { addAnchors, checkAnchors, checkRequested, hashPaths, pathFromUser, projectRoot, readAnchorsFile, reanchor, removeAnchors, requestAnchors, requestedFor, setAnchors } from "./anchors.mjs";
 export const USAGE = `Usage:
   stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD] [--expires YYYY-MM-DD] [--supersedes <old-id>] [--files a,b]
@@ -64,6 +65,7 @@ export const USAGE = `Usage:
                --since YYYY-MM-DD  --until YYYY-MM-DD (on valid_from)
   stashpad entities [--limit N] [--json]  names, tools and files the memories talk about, most mentioned first
   stashpad about <name...> [--json]       the memories about one of them, and what is mentioned with it
+  stashpad shown [--today|--since YYYY-MM-DD|--session <id>] [--json] [--clear]   what Stashpad put in front of agents: ids and sizes, never text
   stashpad misses [--json]             words that searches looked for but did not find, with close words from your memories
   stashpad synonym add <word> <word...>   add a synonym group to this store (synonyms.json)
   stashpad duplicates [--json]         pairs of current memories that say almost the same
@@ -168,6 +170,9 @@ const OPTIONS = {
   last: { type: "boolean" },
   files: { type: "string" },
   changed: { type: "boolean" },
+  session: { type: "string" },
+  today: { type: "boolean" },
+  clear: { type: "boolean" },
   yes: { type: "boolean" },
   version: { type: "boolean", short: "v" },
   help: { type: "boolean", short: "h" },
@@ -387,6 +392,7 @@ function cmdGet(io, dir, id, values) {
   } catch {
     anchored = null;
   }
+  logShown(dir, { event: "cli get", ids: [id], chars: text.length });
   if (values.json) {
     io.stdout(JSON.stringify(defuseValues({ label: DATA_LABEL, reads_like_instruction: flagged, ...meta, body, ...(anchored ? { files: anchored.files } : {}) })));
   } else {
@@ -481,6 +487,7 @@ function cmdSearch(io, dir, query, values) {
   }
 
   if (results.length === 0) logMiss(dir, text);
+  else logShown(dir, { event: "cli search", ids: results.map((r) => r.id), chars: JSON.stringify(results).length });
   if (values.json) {
     io.stdout(JSON.stringify(results));
     return 0;
@@ -536,7 +543,9 @@ function cmdBrief(io, dir, values) {
     return usageError(io, "--max-chars must be a whole number from 300 to 20000");
   }
   const brief = buildBrief(dir, { maxChars, cwd: io.cwd });
-  io.stdout(values.json ? JSON.stringify(defuseValues(brief)) : fence(brief.text));
+  const out = values.json ? JSON.stringify(defuseValues(brief)) : fence(brief.text);
+  io.stdout(out);
+  logShown(dir, { event: "cli brief", ids: brief.ids, chars: out.length });
   return 0;
 }
 
@@ -731,6 +740,37 @@ function cmdAnchors(io, dir, command, [id, ...paths], values) {
   return 0;
 }
 
+function cmdShown(io, dir, values) {
+  if (values.clear) {
+    const removed = clearShown(dir);
+    io.stdout(removed ? "Cleared the log of what was shown." : "Nothing to clear.");
+    return 0;
+  }
+  if (values.since !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(values.since)) return usageError(io, "--since must be a date like 2026-10-01");
+  const since = values.today ? todayIso() : values.since ?? null;
+  const report = shownReport(dir, { since, session: values.session ?? null });
+  if (values.json) {
+    io.stdout(JSON.stringify(report));
+    return 0;
+  }
+  if (report.entries.length === 0) {
+    io.stdout("Nothing shown yet (with these filters). The hooks, the MCP read tools and brief, recall, search and get log here.");
+    return 0;
+  }
+  const limit = values.limit === undefined ? 20 : Number(values.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) return usageError(io, "--limit must be a whole number from 1 to 1000");
+  for (const e of report.entries.slice(-limit)) {
+    const when = String(e.at).slice(0, 16).replace("T", " ");
+    io.stdout(`${when}  ${e.event.padEnd(14)} ${String(e.ids.length).padStart(2)} memories  ${String(e.chars).padStart(6)} chars  ${e.ids.join(", ")}${e.session ? `  (session ${e.session.slice(0, 8)})` : ""}`);
+  }
+  if (report.entries.length > limit) io.stdout(`(${report.entries.length - limit} earlier entries; use --limit or --json)`);
+  for (const s of report.sessions.filter((x) => x.session !== "(no session)")) {
+    io.stdout(`Session ${s.session.slice(0, 8)}: ${s.events} outputs, ${s.ids.length} memories, ${s.chars} chars in total`);
+  }
+  if (report.most_shown.length) io.stdout(`Most shown: ${report.most_shown.map((m) => `${m.id} ${m.times}x`).join(", ")}`);
+  return 0;
+}
+
 function cmdLint(io, dir, values) {
   const r = lint(dir, { cwd: io.cwd });
   if (values.json) io.stdout(JSON.stringify(r));
@@ -807,6 +847,8 @@ export async function run(argv, io = defaultIo()) {
         if (result.related.length > 0) io.stdout(`Mentioned with: ${result.related.map((r) => `${r.name} (${r.together})`).join(", ")}`);
         return 0;
       }
+      case "shown":
+        return cmdShown(io, dir, values);
       case "misses": {
         const rows = missReport(dir);
         if (values.json) io.stdout(JSON.stringify(rows));
@@ -859,8 +901,9 @@ export async function run(argv, io = defaultIo()) {
         const words = positionals.slice(1).join(" ").trim();
         if (!words) return usageError(io, 'recall needs words, for example: stashpad recall "add a database migration"');
         const result = recall(dir, words, { cwd: io.cwd });
-        if (values.json) io.stdout(JSON.stringify(defuseValues(result)));
-        else io.stdout(result.text ? fence(result.text) : "No clear match.");
+        const out = values.json ? JSON.stringify(defuseValues(result)) : result.text ? fence(result.text) : "No clear match.";
+        io.stdout(out);
+        if (result.hits.length) logShown(dir, { event: "cli recall", ids: result.hits, chars: out.length });
         return 0;
       }
       case "hook": {
