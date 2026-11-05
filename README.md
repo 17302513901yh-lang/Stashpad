@@ -26,9 +26,11 @@ Claude Code users can install the plugin instead, which also adds the hooks belo
 ## Why Stashpad?
 
 - **Your agent stops forgetting after compaction.** Pinned rules and the latest handoff come back at the start of every session and right after `/compact`.
-- **Rules you set stay in front of the agent.** `stashpad pin` keeps the few rules that matter in every brief; each prompt gets only the memories that clearly match it.
+- **Rules you set stay in front of the agent.** `stashpad pin` keeps the few rules that matter in every brief; each prompt gets only the memories that clearly match it, once per session.
+- **Memory that knows when the code moved on.** Anchor a memory to its files and recall says "changed since saved", follows a renamed file and skips a memory whose files are gone. Decisions keep why they were made and what lost (`stashpad decide`).
 - **Nothing ends up in memory behind your back.** Agent, tool and web notes wait for a person; near-copies, secrets and hidden text are refused.
 - **You can read, fix and keep it.** Memories are Markdown files with a source and dates, in your project, in git if you want. Old facts are ended, never overwritten.
+- **You see what the agent got.** `stashpad shown` lists which memories were put in front of the agent and how many characters, and a status line keeps the review queue in view.
 - **It keeps working.** One store per project (worktrees share it), a lock for parallel writers, snapshots before changes, `doctor` that says what to fix.
 
 ## How it compares
@@ -36,12 +38,15 @@ Claude Code users can install the plugin instead, which also adds the hooks belo
 | | Stashpad | mem0 (open source) | MCP reference memory server | `CLAUDE.md` / `AGENTS.md` by hand |
 |---|---|---|---|---|
 | Needs | Node 20 | an LLM and an embedding/vector store | Node | nothing |
+| Network | none: no network calls, no telemetry | calls an LLM and embedding provider (a hosted API by default; local models can be configured) | none | none |
+| Account | no | no for the open-source library (the hosted platform needs one) | no | no |
 | Storage | Markdown files, one per memory | vector store (+ history DB) | one JSON Lines graph file | one Markdown file |
 | What gets saved | what a person writes, or an agent proposes and a person accepts | facts an LLM extracts from conversations | what the agent writes | what you write |
+| Agent writes | wait for a person to accept them | stored directly | stored directly | the agent can edit the file if it may write files |
 | Search | words (BM25) + synonyms; misses some rewordings | semantic (embeddings) | substring match | the agent reads all of it |
 | Old facts | ended with dates and a supersede chain | updated or deleted | edited in place | edited by hand |
-| Survives compaction | brief + pins + handoff via hooks | depends on the client | depends on the client | yes (always loaded) |
-| Safety | review queue, secret and hidden-text checks, data label, optional encryption | depends on setup | none built in | none |
+| Compaction | brief and pins come back right after it; an automatic handoff is left before it; per-prompt recall starts over | depends on the client | depends on the client | yes (always loaded) |
+| Safety | review queue, secret and hidden-text checks, fenced and defused output, optional encryption | depends on setup | none built in | none |
 | License | MIT | Apache-2.0 | MIT / Apache-2.0 | – |
 
 What Stashpad does **not** do: semantic search (word search finds about 2 of 3 reworded questions in our eval), automatic extraction of memories from chats (by design), sync between computers (use git), or a shared server for a team.
@@ -51,11 +56,12 @@ What Stashpad does **not** do: semantic search (word search finds about 2 of 3 r
 ```bash
 stashpad brief                  # short summary: pinned rules, newest memories, open handoff
 stashpad recall "add a postgres migration"    # the few memories that clearly match a request
+stashpad decide "We use Postgres" --why "several workers write at once" --rejected SQLite   # a decision with its reason
 stashpad handoff leave --text "Half done: auth. Next: tests."   # a note the next session reads once
 stashpad sync-agents AGENTS.md  # put the brief in a file agents already read (no MCP needed)
 ```
 
-With the Claude Code plugin these run as hooks: at session start and after compaction, on each prompt, and before compaction (an automatic handoff). See [docs/HOOKS.md](docs/HOOKS.md). Agents: read [AGENT-GUIDE.md](AGENT-GUIDE.md).
+With the Claude Code plugin these run as hooks: at session start and after compaction, on each prompt (each memory once per session), and before compaction and at session end (an automatic handoff with the branch and uncommitted files; a session that crashed is noticed at the next start). Pause them per project with `stashpad hooks off`; add `stashpad setup claude-code --status-line` for a status bar line. See [docs/HOOKS.md](docs/HOOKS.md). Agents: read [AGENT-GUIDE.md](AGENT-GUIDE.md).
 
 ## Develop
 
@@ -80,9 +86,13 @@ stashpad search database --kind decision --as-of 2026-03-01 --explain   # what w
 stashpad entities                  # names, tools and files the memories talk about
 stashpad about Postgres            # every memory about it, and what is mentioned with it
 stashpad confirm db-choice-v2      # still true; doctor flags agent memories nobody confirmed for 180 days
+stashpad anchor tax-rules src/billing/tax.ts   # recall and lint say when that file changes; confirm re-anchors
+stashpad anchors --changed         # anchored memories whose files changed, moved or are gone
+stashpad shown                     # what was put in front of the agent: memory ids and sizes, never text
 stashpad handoff leave --text "Half done: auth. Next: tests."   # a note the next session reads once
 stashpad handoff claim             # take it (a person's notes first); listing never takes one
 stashpad feedback db-choice --signal stale   # helpful, stale or wrong; wrong also asks for it to end
+stashpad feedback --last --signal wrong      # about the memory the prompt hook gave last
 stashpad lint                      # what deserves a look; changes nothing
 ```
 
@@ -112,7 +122,7 @@ stashpad audit
 }
 ```
 
-Eight tools: `stashpad_search`, `stashpad_get`, `stashpad_recent`, `stashpad_about`, `stashpad_save`, `stashpad_forget`, `stashpad_handoff`, `stashpad_feedback`.
+Eight tools: `stashpad_search`, `stashpad_get`, `stashpad_recent`, `stashpad_about`, `stashpad_save`, `stashpad_forget`, `stashpad_handoff`, `stashpad_feedback`. `stashpad_save` takes optional `files` (read when a person accepts) and, for decisions, `why` and `rejected`.
 
 ## Check it, import into it
 
@@ -145,7 +155,8 @@ Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `sou
 - Instruction-like text (English and Dutch) is flagged for the reviewer.
 - A gatekeeper refuses agent notes that are too short or near-copies of an existing or waiting memory, and logs the refusal in the audit log. Notes a person writes are never blocked.
 - Limits: 4000 characters per memory, 200 writes waiting for review.
-- Recalled text is labelled as data, not instructions.
+- Recalled text is labelled as data, not instructions, and comes inside one `<stashpad-data>` block; tags that could pass for the agent app's own text (`</system-reminder>`, `<system>`, …) are defused.
+- Paths a memory is anchored to stay inside the project: no `..`, no links out, nothing is read for an agent's proposal until a person accepts it.
 
 ## Docs
 
@@ -164,7 +175,7 @@ Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `sou
 
 ## FAQ
 
-**Does Stashpad send anything anywhere?** No. It makes no network calls, calls no model and has no telemetry. The review page listens only on this computer.
+**Does Stashpad send anything anywhere?** No. It makes no network calls, calls no model and has no telemetry. The review page listens only on this computer. The log of what was shown to an agent (`stashpad shown`) stays in the store, holds ids and sizes only, and is kept out of git.
 
 **Where are my memories?** In `.stashpad/memories` of your project (`stashpad where` tells you). They are Markdown files you can open, edit and commit.
 
