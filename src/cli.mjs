@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { exportMemories, exportMarkdown } from "./export.mjs";
 import { archiveSource } from "./sources.mjs";
 import { buildBrief, DEFAULT_BRIEF_CHARS, HANDOVER_PREFIX, isHandoverId, syncAgentsFile } from "./brief.mjs";
-import { CLIENTS, setupText } from "./setup.mjs";
+import { CLIENTS, setupText, statusLineText } from "./setup.mjs";
 import { aboutEntity, listEntities } from "./entities.mjs";
 import { decryptStore, encryptStore } from "./encrypt.mjs";
 import { encryptionOf } from "./vault.mjs";
@@ -54,6 +54,8 @@ import { cancelHandoff, claimHandoff, createHandoff, listHandoffs } from "./hand
 import { giveFeedback, lint } from "./feedback.mjs";
 import { lastGiven } from "./sessions.mjs";
 import { decisionBody, decisionId } from "./decisions.mjs";
+import { hooksPaused, setHooksPaused } from "./hookswitch.mjs";
+import { statusLine } from "./statusline.mjs";
 import { clearShown, logShown, shownReport } from "./shown.mjs";
 import { addAnchors, checkAnchors, checkRequested, hashPaths, pathFromUser, projectRoot, readAnchorsFile, reanchor, removeAnchors, requestAnchors, requestedFor, setAnchors } from "./anchors.mjs";
 export const USAGE = `Usage:
@@ -76,6 +78,8 @@ export const USAGE = `Usage:
   stashpad pin <id> | unpin <id> | pins   pin the few rules every session must see (a person only; at most 12)
   stashpad recall <words...> [--json]     the memories that clearly match a request (what the prompt hook adds)
   stashpad hook <session-start|prompt|pre-compact|session-end>   for agent hooks: reads the event JSON on stdin, never fails
+  stashpad hooks [off|on] [--json]        pause or resume the hooks for this project (kept outside the repository)
+  stashpad status-line                    one line for an agent app's status bar: memories, waiting reviews, open handoff
   stashpad confirm <id>                   say a memory is still true (updates last_confirmed_at, re-anchors its files)
   stashpad anchor <id> <path...>          link a memory to files or folders; recall says when they change (a person only)
   stashpad unanchor <id> [<path...>]      remove anchors (all of them without paths)
@@ -91,6 +95,7 @@ export const USAGE = `Usage:
   stashpad mcp                 serve the eight agent tools over stdio (for MCP clients)
   stashpad ui [--port N] [--open]   review waiting memories in a page on this computer (Ctrl+C stops it)
   stashpad setup [generic|claude-code|vscode|codex|agents-md]   print the settings that connect an agent to Stashpad
+  stashpad setup claude-code --status-line   print the Claude Code status line setting
   stashpad where [--json]              which store this folder uses, and why
   stashpad doctor [--client] [--json]  check that Stashpad and the store are healthy, with a fix for each problem
   stashpad brief [--max-chars N] [--json]   short plain-text summary for the start of a session (any agent can read it)
@@ -178,6 +183,7 @@ const OPTIONS = {
   why: { type: "string" },
   rejected: { type: "string", multiple: true },
   id: { type: "string" },
+  "status-line": { type: "boolean" },
   today: { type: "boolean" },
   clear: { type: "boolean" },
   yes: { type: "boolean" },
@@ -528,6 +534,11 @@ function cmdSearch(io, dir, query, values) {
 }
 
 function cmdSetup(io, dir, client, values) {
+  if (values["status-line"]) {
+    if ((client ?? "claude-code") !== "claude-code") return usageError(io, "--status-line is a Claude Code setting: stashpad setup claude-code --status-line");
+    io.stdout(statusLineText());
+    return 0;
+  }
   const text = setupText(client ?? "generic", { dir: values.dir ?? io.env.STASHPAD_DIR ?? null });
   if (text === null) return usageError(io, `Unknown client "${client}". Choose one of: ${CLIENTS.join(", ")}.`);
   io.stdout(text);
@@ -536,7 +547,7 @@ function cmdSetup(io, dir, client, values) {
 }
 
 async function cmdDoctor(io, dir, values) {
-  const report = runDoctor(dir);
+  const report = runDoctor(dir, { cwd: io.cwd, env: io.env });
   if (values.client) {
     const pathNode = checkPathNode(io.env);
     report.checks.push(pathNode.ok ? { name: "node on PATH", status: "ok", detail: pathNode.detail } : { name: "node on PATH", status: "warn", detail: pathNode.detail, fix: pathNode.fix });
@@ -940,9 +951,29 @@ export async function run(argv, io = defaultIo()) {
         } catch {
           raw = "";
         }
+        // Paused for this project: the event is read and nothing is printed or written.
+        if (hooksPaused(dir, io.env)) return 0;
         const out = runHook(dir, id, parseEvent(raw), { globalDir: values.global ? null : globalStore(io.env) });
         if (typeof out === "object" && out?.error) io.stderr(`stashpad hook ${id}: ${out.error}`);
         else if (out) io.stdout(out);
+        return 0;
+      }
+      case "hooks": {
+        if (id !== undefined && id !== "on" && id !== "off") return usageError(io, "use: stashpad hooks [on|off]");
+        const result = id === undefined ? { store: dir, hooks: hooksPaused(dir, io.env) ? "off" : "on" } : setHooksPaused(dir, id === "off", io.env);
+        if (values.json) io.stdout(JSON.stringify(result));
+        else if (id === undefined) io.stdout(`Hooks are ${result.hooks} for ${dir}.${result.hooks === "off" ? " Turn them back on with: stashpad hooks on" : ""}`);
+        else io.stdout(id === "off" ? `Hooks are off for ${dir}: they print and write nothing until "stashpad hooks on". The command line and MCP keep working.` : `Hooks are on again for ${dir}.`);
+        return 0;
+      }
+      case "status-line": {
+        let raw = "";
+        try {
+          raw = io.stdinIsTTY ? "" : await io.readStdin();
+        } catch {
+          raw = "";
+        }
+        io.stdout(statusLine({ input: parseEvent(raw), cwd: io.cwd, env: io.env, explicit: values.dir, global: values.global === true }));
         return 0;
       }
       case "confirm": {

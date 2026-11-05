@@ -22,6 +22,19 @@ Inside it, a tag that could pass for the agent app's own text (`</system-reminde
 
 The Claude Code plugin in this repository wires all four (`hooks/hooks.json`). The automatic handoff reads the end of the Claude Code transcript (`transcript_path`); other agents can pass the same JSON from their own hooks, or leave a note themselves with `stashpad handoff leave`.
 
+## Pause, status line, doctor
+
+```bash
+stashpad hooks off        # this project: the hooks print and write nothing until "stashpad hooks on"
+stashpad hooks            # on or off?
+stashpad setup claude-code --status-line   # prints the statusLine setting for ~/.claude/settings.json
+stashpad doctor           # also says whether the hooks are wired (plugin, .claude, .codex or .cursor settings)
+```
+
+The pause is kept in `~/.stashpad/hooks-off.json` (or `$STASHPAD_CONFIG_DIR`), never in the repository, so a commit cannot switch someone's hooks on or off. The command line and the MCP server keep working while the hooks are paused.
+
+The status line reads Claude Code's status JSON and prints one line such as `Stashpad · 42 memories · 3 to review · handoff open` (and `hooks off` when paused). It only counts files and never fails. The review count is the point: what waits for a person stays in front of the person.
+
 ## What was shown
 
 ```bash
