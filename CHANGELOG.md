@@ -3,10 +3,16 @@
 ## Unreleased
 
 - **Missed searches are counted for `stashpad search --json` too**, so `stashpad misses` sees the searches agents make on the command line (#20).
+- **`stashpad import --format` works as documented** (`jsonl` or `text`) (#21).
+- **Search ignores accents on Latin letters:** `cafe` finds `café` and the other way round. Accents in other writing systems still count (#26).
+- **`stashpad audit <id> --limit N`:** the audit log of one memory, including the request that ended it and merges into it, and up to 10,000 entries instead of the last 50 (#27).
+- **The handoff reads Codex CLI sessions:** patches sent through a shell or function call, and user messages stored only as events, now show up in the summary before compaction (#28).
+- **`stashpad export --format markdown`:** one readable Markdown file, current memories first and ended ones in their own section with `--all` (#29).
 
 ### Thanks
 
-- @jay23606 for logging JSON search misses (#20).
+- @jay23606 for logging JSON search misses (#20), accent-insensitive search (#26), audit filters (#27), the Codex handoff (#28) and the Markdown export (#29).
+- @bfs2021 for the import `--format` fix (#21).
 
 ## 0.3.0
 
