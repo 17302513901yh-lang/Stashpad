@@ -18,10 +18,25 @@ stashpad handoff cancel <id> --reason "already done"
   replaces the older open auto notes, so a stale automatic note never wins over a fresh one.
 - **Claim once:** claiming runs under the store lock, so two sessions starting at the same moment cannot both take
   the same handoff.
-- **Safety:** secrets and invisible characters are refused; text that reads like an order is flagged. The brief says
+- **Safety:** secrets and invisible characters are refused; text that reads like an order is flagged. The automatic
+  handoff from the hooks masks a secret in a request as `[REDACTED]` (and says how many) instead of dropping it. The brief says
   that a handoff is waiting, but does not show its text, so starting a session does not use it up.
 - **Storage:** one JSON file per handoff in `<store>/handoffs/`, sealed when the store is encrypted.
 - **Agents:** the MCP tool `stashpad_handoff` (action `list`, `claim` or `leave`). Notes an agent leaves are `auto`.
+
+### The automatic handoff from the hooks
+
+Before compaction and at the end of a session, the hooks leave an `auto` handoff with the last three requests, the
+files written, the git branch and the files that are not committed yet (up to 10, then a count). When a session never
+reaches its end (it crashed, was killed, or the window was closed before the hook ran), the next session start leaves
+a note that says so, built from that session's transcript, so the work is treated as unfinished. It says it may also
+still be running in another window, and it is written once per such session.
+
+`git status` runs with the repository's `core.fsmonitor` switched off (a repository's config cannot make Stashpad
+start a program), without taking the index lock, from an absolute path to git, and with a 2 second limit; without git
+the note simply has no branch or file list. The branch is read from `.git/HEAD`. A handoff can carry a branch by
+hand too: `stashpad handoff leave --text "…" --branch feature/login`. When the open handoff was left on another
+branch than the one checked out, the brief says so.
 
 The idea follows ai-memory's typed handoffs (akitaonrails/ai-memory, MIT); Stashpad's version is its own and smaller.
 
@@ -39,7 +54,9 @@ counts. `wrong` also queues an ending request, which a person accepts like any o
 `stashpad lint` lists what deserves a look, by rules only: memories marked stale or wrong, agent memories nobody
 confirmed for 180 days, memories that end within 14 days, broken supersede links, text that reads like an order,
 handoffs that passed their expiry unread, pinned memories that are no longer current (`pin-ended`), and pins whose
-memory file is gone (`pin-missing`). Each pin rule names the fix, `stashpad unpin <id>`. It changes nothing.
+memory file is gone (`pin-missing`). Each pin rule names the fix, `stashpad unpin <id>`. Memories anchored to files
+that changed or are gone (`anchor-changed`, `anchor-gone`, fix: `stashpad confirm <id>`), and agent memories that
+nothing showed to an agent for 90 days (`never-shown`, see `stashpad shown`). It changes nothing.
 
 ## Expiry
 

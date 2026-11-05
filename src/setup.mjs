@@ -19,6 +19,17 @@ export function launcher(bin, nodePath = process.execPath) {
 
 export { binPath };
 
+// The Claude Code status line: "Stashpad · 42 memories · 3 to review · handoff open".
+export function statusLineText({ bin = binPath(), nodePath = process.execPath } = {}) {
+  const run = launcher(bin, nodePath);
+  const args = run.args.slice(0, -1);
+  const command = [run.command, ...args, "status-line"].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(" ");
+  return [
+    "Add this to ~/.claude/settings.json (or .claude/settings.json in a project):",
+    JSON.stringify({ statusLine: { type: "command", command } }, null, 2),
+  ].join("\n");
+}
+
 export function setupText(client, { dir = null, bin: binOverride = null, nodePath = process.execPath } = {}) {
   const bin = binOverride ?? binPath();
   const run = launcher(bin, nodePath);

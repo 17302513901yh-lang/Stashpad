@@ -13,6 +13,10 @@ import { parseMemory } from "./memory-format.mjs";
 import { encryptionOf, keyFor, openLine, readData } from "./vault.mjs";
 import { plainFilesInEncryptedStore } from "./encrypt.mjs";
 import { STORE_FORMAT, VERSION } from "./version.mjs";
+import { ANCHORS_FILE, readAnchorsFile } from "./anchors.mjs";
+import { hooksPaused } from "./hookswitch.mjs";
+import { gitRoot } from "./locate.mjs";
+import { homedir } from "node:os";
 
 const ok = (name, detail) => ({ name, status: "ok", detail });
 const warn = (name, detail, fix) => ({ name, status: "warn", detail, fix });
@@ -143,6 +147,14 @@ function checkStore(dir) {
   if (synonyms.problem !== null) {
     checks.push(warn("synonyms", synonyms.problem, "Fix or delete synonyms.json. Search works without it."));
   }
+  if (existsSync(join(dir, ANCHORS_FILE))) {
+    try {
+      const { anchors } = readAnchorsFile(dir);
+      checks.push(ok("anchors", `${Object.keys(anchors).length} memory/memories anchored to files (stashpad anchors)`));
+    } catch (error) {
+      checks.push(warn("anchors", error.message, "Fix anchors.json or restore it from a snapshot. Recall works without it."));
+    }
+  }
   checks.push(ok("snapshots", `${listSnapshots(dir).length} snapshot(s)`));
   if (isInsideInstall(dir)) {
     checks.push(warn("location", "the store is inside the Stashpad folder", "Set STASHPAD_DIR to a folder outside it, so an update cannot replace your memories."));
@@ -169,7 +181,51 @@ function editedByHand(dir, files) {
     .map((f) => f.name.slice(0, -3));
 }
 
-export function runDoctor(dir, { nodeVersion = process.version } = {}) {
-  const checks = [checkNode(nodeVersion), selfTest(), ...checkStore(dir)];
+function readSmall(path) {
+  try {
+    const info = statSync(path);
+    return info.isFile() && info.size <= 1024 * 1024 ? readFileSync(path, "utf8") : null;
+  } catch {
+    return null;
+  }
+}
+
+// Whether something runs the Stashpad hooks here: the Claude Code plugin, or hook entries in the
+// settings files of Claude Code, Codex or Cursor (project and user). Only reads; never edits.
+export function findHookWiring({ cwd = process.cwd(), home = homedir() } = {}) {
+  const found = [];
+  const root = gitRoot(cwd) ?? cwd;
+  const userSettings = readSmall(join(home, ".claude", "settings.json"));
+  try {
+    const plugins = JSON.parse(userSettings ?? "{}").enabledPlugins ?? {};
+    if (Object.entries(plugins).some(([name, on]) => on === true && /^stashpad@/.test(name))) found.push("Claude Code plugin (enabled in ~/.claude/settings.json)");
+  } catch {
+    // not JSON: nothing to read here
+  }
+  const files = [
+    [join(root, ".claude", "settings.json"), ".claude/settings.json"],
+    [join(root, ".claude", "settings.local.json"), ".claude/settings.local.json"],
+    [join(home, ".claude", "settings.json"), "~/.claude/settings.json"],
+    [join(root, ".codex", "hooks.json"), ".codex/hooks.json"],
+    [join(home, ".codex", "hooks.json"), "~/.codex/hooks.json"],
+    [join(root, ".cursor", "hooks.json"), ".cursor/hooks.json"],
+    [join(home, ".cursor", "hooks.json"), "~/.cursor/hooks.json"],
+  ];
+  for (const [path, label] of files) {
+    const text = readSmall(path);
+    if (text && /stashpad[^"\n]*\bhook\s+(?:session-start|prompt|pre-compact|session-end)\b/.test(text)) found.push(`hooks in ${label}`);
+  }
+  return [...new Set(found)];
+}
+
+function checkHooks(dir, { cwd, home, env }) {
+  if (hooksPaused(dir, env)) return warn("hooks", "the hooks are off for this project (stashpad hooks off)", "Turn them back on with: stashpad hooks on");
+  const found = findHookWiring({ cwd, home });
+  if (found.length > 0) return ok("hooks", `wired: ${found.join(", ")}`);
+  return { name: "hooks", status: "ok", detail: "no Stashpad hooks found here (optional: without them memory does not come back by itself after compaction)", fix: "Claude Code: install the plugin (/plugin install stashpad@stashpad). Other agents: see docs/HOOKS.md." };
+}
+
+export function runDoctor(dir, { nodeVersion = process.version, cwd = process.cwd(), home = homedir(), env = process.env } = {}) {
+  const checks = [checkNode(nodeVersion), selfTest(), ...checkStore(dir), checkHooks(dir, { cwd, home, env })];
   return { version: VERSION, store: dir, checks, healthy: checks.every((c) => c.status !== "fail") };
 }

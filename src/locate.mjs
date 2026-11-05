@@ -62,6 +62,12 @@ function nearestStore(start) {
   }
 }
 
+// Stashpad's own settings for this computer (such as which projects have their hooks off). Kept
+// outside every project, so a commit cannot change them for someone else.
+export function configDir(env = process.env) {
+  return env.STASHPAD_CONFIG_DIR ? resolve(env.STASHPAD_CONFIG_DIR) : join(homedir(), ".stashpad");
+}
+
 export function globalStore(env = process.env) {
   return env.STASHPAD_GLOBAL_DIR ? resolve(env.STASHPAD_GLOBAL_DIR) : join(homedir(), ".stashpad", "global");
 }

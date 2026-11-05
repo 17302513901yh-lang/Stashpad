@@ -28,8 +28,17 @@ function dataFiles(root) {
   const files = [];
   for (const name of readdirSync(root)) {
     const path = join(root, name);
-    if ((name.endsWith(".md") || name === "pins.json") && isFile(path)) files.push({ path, kind: "file" });
+    if ((name.endsWith(".md") || name === "pins.json" || name === "anchors.json") && isFile(path)) files.push({ path, kind: "file" });
     if ((name === "audit.jsonl" || name === "feedback.jsonl" || name === "misses.jsonl") && isFile(path)) files.push({ path, kind: "lines" });
+  }
+  // Hook state: session files are sealed, the folder's .gitignore stays plain.
+  const sessions = join(root, ".sessions");
+  if (isDir(sessions)) {
+    for (const name of readdirSync(sessions)) {
+      const path = join(sessions, name);
+      if (((name.startsWith("session-") && name.endsWith(".json")) || name === "last-shown.json") && isFile(path)) files.push({ path, kind: "file" });
+      if (name === "shown.jsonl" && isFile(path)) files.push({ path, kind: "lines" });
+    }
   }
   for (const sub of ["pending", "rejected", "sources", "handoffs"]) {
     const folder = join(root, sub);

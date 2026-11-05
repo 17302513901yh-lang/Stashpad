@@ -37,11 +37,14 @@
         "text"
       ],
       "arguments": [
+        "files",
         "id",
         "kind",
+        "rejected",
         "source_ref",
         "supersedes",
-        "text"
+        "text",
+        "why"
       ]
     },
     {
@@ -89,5 +92,5 @@
       ]
     }
   ],
-  "hash": "044bad883141e30e993e51ad79bac3da4a689405351e15633a89178df44157e3"
+  "hash": "ebaa561ab2f9f0cb4cd0c3f630d2c3e475e0b68e44f70634065a8490e430f8a7"
 }

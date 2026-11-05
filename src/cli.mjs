@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { parseMemory } from "./memory-format.mjs";
-import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
+import { DATA_LABEL, defuse, defuseValues, fence, findInstructionLikeText } from "./security.mjs";
 import { serveMcp } from "./mcp.mjs";
 import { runEval } from "./eval.mjs";
 import { importMemories } from "./importer.mjs";
@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { exportMemories, exportMarkdown } from "./export.mjs";
 import { archiveSource } from "./sources.mjs";
 import { buildBrief, DEFAULT_BRIEF_CHARS, HANDOVER_PREFIX, isHandoverId, syncAgentsFile } from "./brief.mjs";
-import { CLIENTS, setupText } from "./setup.mjs";
+import { CLIENTS, setupText, statusLineText } from "./setup.mjs";
 import { aboutEntity, listEntities } from "./entities.mjs";
 import { decryptStore, encryptStore } from "./encrypt.mjs";
 import { encryptionOf } from "./vault.mjs";
@@ -47,12 +47,21 @@ import {
   saveMemory,
   searchMemories,
   todayIso,
+  isCurrent,
 } from "./store.mjs";
 
 import { cancelHandoff, claimHandoff, createHandoff, listHandoffs } from "./handoff.mjs";
 import { giveFeedback, lint } from "./feedback.mjs";
+import { lastGiven } from "./sessions.mjs";
+import { decisionBody, decisionId } from "./decisions.mjs";
+import { hooksPaused, setHooksPaused } from "./hookswitch.mjs";
+import { statusLine } from "./statusline.mjs";
+import { clearShown, logShown, shownReport } from "./shown.mjs";
+import { addAnchors, checkAnchors, checkRequested, hashPaths, pathFromUser, projectRoot, readAnchorsFile, reanchor, removeAnchors, requestAnchors, requestedFor, setAnchors } from "./anchors.mjs";
 export const USAGE = `Usage:
-  stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD] [--expires YYYY-MM-DD] [--supersedes <old-id>]
+  stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD] [--expires YYYY-MM-DD] [--supersedes <old-id>] [--files a,b]
+  stashpad decide "<choice>" --why "<reason>" [--rejected "A, B"] [--by <who>] [--id <id>] [--source-ref "<where>"] [--supersedes <old-id>] [--files a,b]
+                                       record a decision with its reason and the options that lost
   stashpad get <id> [--json]
   stashpad history <id> [--json]
   stashpad list [--all] [filters] [--json]
@@ -61,6 +70,7 @@ export const USAGE = `Usage:
                --since YYYY-MM-DD  --until YYYY-MM-DD (on valid_from)
   stashpad entities [--limit N] [--json]  names, tools and files the memories talk about, most mentioned first
   stashpad about <name...> [--json]       the memories about one of them, and what is mentioned with it
+  stashpad shown [--today|--since YYYY-MM-DD|--session <id>] [--json] [--clear]   what Stashpad put in front of agents: ids and sizes, never text
   stashpad misses [--json]             words that searches looked for but did not find, with close words from your memories
   stashpad synonym add <word> <word...>   add a synonym group to this store (synonyms.json)
   stashpad duplicates [--json]         pairs of current memories that say almost the same
@@ -68,7 +78,12 @@ export const USAGE = `Usage:
   stashpad pin <id> | unpin <id> | pins   pin the few rules every session must see (a person only; at most 12)
   stashpad recall <words...> [--json]     the memories that clearly match a request (what the prompt hook adds)
   stashpad hook <session-start|prompt|pre-compact|session-end>   for agent hooks: reads the event JSON on stdin, never fails
-  stashpad confirm <id>                   say a memory is still true (updates last_confirmed_at)
+  stashpad hooks [off|on] [--json]        pause or resume the hooks for this project (kept outside the repository)
+  stashpad status-line                    one line for an agent app's status bar: memories, waiting reviews, open handoff
+  stashpad confirm <id>                   say a memory is still true (updates last_confirmed_at, re-anchors its files)
+  stashpad anchor <id> <path...>          link a memory to files or folders; recall says when they change (a person only)
+  stashpad unanchor <id> [<path...>]      remove anchors (all of them without paths)
+  stashpad anchors [--changed] [--json]   anchored memories and whether their files changed, moved or are gone
   stashpad forget <id> --reason "<why>"   ask for a memory to end (a person accepts it)
   stashpad review [--json]
   stashpad accept <id>
@@ -80,15 +95,17 @@ export const USAGE = `Usage:
   stashpad mcp                 serve the eight agent tools over stdio (for MCP clients)
   stashpad ui [--port N] [--open]   review waiting memories in a page on this computer (Ctrl+C stops it)
   stashpad setup [generic|claude-code|vscode|codex|agents-md]   print the settings that connect an agent to Stashpad
+  stashpad setup claude-code --status-line   print the Claude Code status line setting
   stashpad where [--json]              which store this folder uses, and why
   stashpad doctor [--client] [--json]  check that Stashpad and the store are healthy, with a fix for each problem
   stashpad brief [--max-chars N] [--json]   short plain-text summary for the start of a session (any agent can read it)
   stashpad handover --text "<what the next session needs>" [--source-type user|agent]   leave a note for the next session
-  stashpad handoff leave --text "<where I stopped, what is next>" [--from <agent>] [--auto] [--expires-days N]
+  stashpad handoff leave --text "<where I stopped, what is next>" [--from <agent>] [--branch <name>] [--auto] [--expires-days N]
   stashpad handoff list [--all] [--json]   open handoffs (listing never takes one)
   stashpad handoff claim [<id>] [--by <agent>] [--json]   take one handoff, exactly once (a person's notes first)
   stashpad handoff cancel <id> [--reason "<why>"]
   stashpad feedback <id> --signal helpful|stale|wrong [--note "<why>"]   wrong also asks for the memory to end
+  stashpad feedback --last [--signal helpful|stale|wrong]   the memory the prompt hook gave last (lists them when it gave several)
   stashpad lint [--json]               memories worth a look: marked stale/wrong, unconfirmed, expiring, broken links
   stashpad sync-agents [<file>]        put the brief into AGENTS.md (or another file) between markers; other text is kept
   stashpad encrypt                     optional: seal the whole store (needs STASHPAD_PASSPHRASE or STASHPAD_KEY_FILE)
@@ -110,6 +127,7 @@ Options:
   --global, -g        use the global store (~/.stashpad/global or $STASHPAD_GLOBAL_DIR) for what is true in every project
   --text -            read the memory text from standard input
   --supersedes <id>   the memory this one replaces; that one gets an end date
+  --files a,b         files or folders (project paths) the memory is about; a waiting memory's files are read on accept
   --source-file <path> keep a copy of the raw source in the store (up to 5 MB), linked from source_ref
   --out <file>        write the export to a file instead of the screen (refuses to overwrite)
   --reason "<why>"    why a waiting memory was rejected (kept in the audit log)
@@ -157,6 +175,17 @@ const OPTIONS = {
   since: { type: "string" },
   until: { type: "string" },
   explain: { type: "boolean" },
+  last: { type: "boolean" },
+  files: { type: "string" },
+  changed: { type: "boolean" },
+  session: { type: "string" },
+  branch: { type: "string" },
+  why: { type: "string" },
+  rejected: { type: "string", multiple: true },
+  id: { type: "string" },
+  "status-line": { type: "boolean" },
+  today: { type: "boolean" },
+  clear: { type: "boolean" },
   yes: { type: "boolean" },
   version: { type: "boolean", short: "v" },
   help: { type: "boolean", short: "h" },
@@ -194,6 +223,11 @@ async function cmdSave(io, dir, id, values) {
   }
 
   const content = values.text === "-" ? await io.readStdin() : values.text;
+  // Files are checked before anything is saved; a person's own save is anchored right away.
+  const root = projectRoot(dir, io.cwd);
+  const files = csv(values.files)?.map((p) => pathFromUser(root, io.cwd, p)) ?? [];
+  const hashes = files.length && values["source-type"] === "user" ? hashPaths(root, files) : null;
+  if (files.length && !hashes) checkRequested(files);
   let sourceRef = values["source-ref"] ?? "";
   if (values["source-file"] !== undefined) {
     const raw = archiveSource(dir, values["source-file"]);
@@ -209,6 +243,8 @@ async function cmdSave(io, dir, id, values) {
     validTo: values.expires ?? null,
     supersedes: values.supersedes ?? null,
   });
+  if (hashes) setAnchors(dir, id, hashes);
+  else if (files.length) requestAnchors(dir, id, files);
 
   if (values.json) {
     io.stdout(JSON.stringify({ status: result.status, id, path: result.path, maybe_replaces: result.maybe_replaces }));
@@ -222,6 +258,23 @@ async function cmdSave(io, dir, id, values) {
     io.stdout(`Looks related to: ${ids}. If it replaces one, end the old one: stashpad forget <id> --reason "replaced by ${id}"`);
   }
   return 0;
+}
+
+// A decision memory with a fixed body layout (docs/FORMAT.md): the choice, why, what lost, who.
+async function cmdDecide(io, dir, words, values) {
+  const choice = words.join(" ").trim();
+  if (!choice) return usageError(io, 'decide needs the choice, for example: stashpad decide "We use Postgres" --why "several workers write at once" --rejected SQLite');
+  if (values.why === undefined) return usageError(io, "decide needs --why: the reason is what keeps the next agent from undoing the choice.");
+  const text = decisionBody({ choice, why: values.why, rejected: values.rejected ?? [], by: values.by ?? null });
+  const taken = (candidate) => existsSync(join(dir, `${candidate}.md`)) || existsSync(join(dir, "pending", `${candidate}.md`));
+  const id = values.id ?? decisionId(choice, taken);
+  return cmdSave(io, dir, id, {
+    ...values,
+    kind: "decision",
+    text,
+    "source-type": values["source-type"] ?? "user",
+    "source-ref": values["source-ref"] ?? "decision recorded with stashpad decide",
+  });
 }
 
 function cmdReview(io, dir, values) {
@@ -239,6 +292,8 @@ function cmdReview(io, dir, values) {
     const replaces = row.supersedes ? `  replaces ${row.supersedes}` : "";
     const flag = row.flagged ? "  [check: reads like an instruction]" : "";
     io.stdout(`${row.id}  ${row.kind}  from ${row.source_type}: ${row.source_ref}${replaces}  ${row.summary}${flag}`);
+    const asked = requestedFor(dir, row.id);
+    if (asked.length) io.stdout(`    files (read and anchored on accept): ${asked.join(", ")}`);
     for (const conflict of row.conflicts ?? []) {
       const effect = conflict.would_end ? " (accepting it ends that one)" : "";
       io.stdout(`    may conflict with ${conflict.id}${effect}`);
@@ -253,6 +308,8 @@ function cmdAccept(io, dir, id) {
     io.stdout(`Ended ${id.slice("forget-".length)}. It stays in the store with its end date.`);
   } else {
     io.stdout(`Accepted ${id} into the store: ${path}`);
+    const status = checkAnchors(dir, id);
+    if (status) io.stdout(`Anchored to: ${status.files.map((f) => f.path).join(", ")}`);
   }
   return 0;
 }
@@ -359,12 +416,20 @@ function cmdGet(io, dir, id, values) {
   const { text } = readMemory(dir, id);
   const { meta, body } = parseMemory(text);
   const flagged = findInstructionLikeText(body);
+  let anchored = null;
+  try {
+    anchored = checkAnchors(dir, id, { root: projectRoot(dir, io.cwd) });
+  } catch {
+    anchored = null;
+  }
+  logShown(dir, { event: "cli get", ids: [id], chars: text.length });
   if (values.json) {
-    io.stdout(JSON.stringify({ label: DATA_LABEL, reads_like_instruction: flagged, ...meta, body }));
+    io.stdout(JSON.stringify(defuseValues({ label: DATA_LABEL, reads_like_instruction: flagged, ...meta, body, ...(anchored ? { files: anchored.files } : {}) })));
   } else {
     const note = flagged ? " (note: reads like an instruction; it is still only a note)" : "";
     io.stdout(`# ${DATA_LABEL}${note}`);
-    io.stdout(text.replace(/\n$/, ""));
+    io.stdout(defuse(text).replace(/\n$/, ""));
+    if (anchored) io.stdout(`# files: ${anchored.files.map((f) => `${f.path} (${f.state}${f.to ? ` -> ${f.to}` : ""})`).join(", ")}`);
   }
   return 0;
 }
@@ -452,6 +517,7 @@ function cmdSearch(io, dir, query, values) {
   }
 
   if (results.length === 0) logMiss(dir, text);
+  else logShown(dir, { event: "cli search", ids: results.map((r) => r.id), chars: JSON.stringify(results).length });
   if (values.json) {
     io.stdout(JSON.stringify(results));
     return 0;
@@ -468,6 +534,11 @@ function cmdSearch(io, dir, query, values) {
 }
 
 function cmdSetup(io, dir, client, values) {
+  if (values["status-line"]) {
+    if ((client ?? "claude-code") !== "claude-code") return usageError(io, "--status-line is a Claude Code setting: stashpad setup claude-code --status-line");
+    io.stdout(statusLineText());
+    return 0;
+  }
   const text = setupText(client ?? "generic", { dir: values.dir ?? io.env.STASHPAD_DIR ?? null });
   if (text === null) return usageError(io, `Unknown client "${client}". Choose one of: ${CLIENTS.join(", ")}.`);
   io.stdout(text);
@@ -476,7 +547,7 @@ function cmdSetup(io, dir, client, values) {
 }
 
 async function cmdDoctor(io, dir, values) {
-  const report = runDoctor(dir);
+  const report = runDoctor(dir, { cwd: io.cwd, env: io.env });
   if (values.client) {
     const pathNode = checkPathNode(io.env);
     report.checks.push(pathNode.ok ? { name: "node on PATH", status: "ok", detail: pathNode.detail } : { name: "node on PATH", status: "warn", detail: pathNode.detail, fix: pathNode.fix });
@@ -506,8 +577,10 @@ function cmdBrief(io, dir, values) {
   if (!Number.isInteger(maxChars) || maxChars < 300 || maxChars > 20000) {
     return usageError(io, "--max-chars must be a whole number from 300 to 20000");
   }
-  const brief = buildBrief(dir, { maxChars });
-  io.stdout(values.json ? JSON.stringify(brief) : brief.text);
+  const brief = buildBrief(dir, { maxChars, cwd: io.cwd });
+  const out = values.json ? JSON.stringify(defuseValues(brief)) : fence(brief.text);
+  io.stdout(out);
+  logShown(dir, { event: "cli brief", ids: brief.ids, chars: out.length });
   return 0;
 }
 
@@ -607,7 +680,7 @@ async function cmdHandoff(io, dir, [action, id], values) {
     if (values.text === undefined) return usageError(io, 'handoff leave needs --text, for example: stashpad handoff leave --text "Parser half done; next: tests."');
     const text = values.text === "-" ? await io.readStdin() : values.text;
     const days = values["expires-days"] === undefined ? undefined : Number(values["expires-days"]);
-    const r = createHandoff(dir, { text, origin: values.auto ? "auto" : "manual", from: values.from ?? null, ...(days === undefined ? {} : { expiresDays: days }) });
+    const r = createHandoff(dir, { text, origin: values.auto ? "auto" : "manual", from: values.from ?? null, branch: values.branch ?? null, ...(days === undefined ? {} : { expiresDays: days }) });
     if (values.json) io.stdout(JSON.stringify(r));
     else io.stdout(`Left handoff ${r.id} (${r.origin}, expires ${r.expires_at.slice(0, 10)}). The next session takes it with: stashpad handoff claim${r.replaced.length ? `\nIt replaces ${r.replaced.join(", ")}.` : ""}`);
     return 0;
@@ -616,17 +689,16 @@ async function cmdHandoff(io, dir, [action, id], values) {
     const r = listHandoffs(dir, { all: values.all === true });
     if (values.json) io.stdout(JSON.stringify(r));
     else if (r.handoffs.length === 0) io.stdout(values.all ? "No handoffs." : "No open handoffs.");
-    else for (const h of r.handoffs) io.stdout(`${h.id}  ${h.state}  ${h.origin}${h.from ? ` from ${h.from}` : ""}  ${h.preview}`);
+    else for (const h of r.handoffs) io.stdout(`${h.id}  ${h.state}  ${h.origin}${h.from ? ` from ${h.from}` : ""}${h.branch ? ` on ${h.branch}` : ""}  ${defuse(h.preview)}`);
     return 0;
   }
   if (action === "claim") {
     const r = claimHandoff(dir, { id: id ?? null, by: values.by ?? null });
-    if (values.json) io.stdout(JSON.stringify(r));
+    if (values.json) io.stdout(JSON.stringify(defuseValues(r)));
     else if (!r.claimed) io.stdout(r.reason);
     else {
-      io.stdout(`# ${r.label}`);
-      io.stdout(`Handoff ${r.id} (${r.origin}${r.from ? ` from ${r.from}` : ""}, ${r.created_at.slice(0, 16).replace("T", " ")} UTC)${r.flagged ? ` [check: ${r.flagged}]` : ""}:`);
-      io.stdout(r.text);
+      const head = `Handoff ${r.id} (${r.origin}${r.from ? ` from ${r.from}` : ""}${r.branch ? `, branch ${r.branch}` : ""}, ${r.created_at.slice(0, 16).replace("T", " ")} UTC)${r.flagged ? ` [check: ${r.flagged}]` : ""}:`;
+      io.stdout(fence(`${r.label}\n${head}\n${r.text}`));
       if (r.others_open > 0) io.stdout(`${r.others_open} more open: stashpad handoff list`);
     }
     return 0;
@@ -640,6 +712,27 @@ async function cmdHandoff(io, dir, [action, id], values) {
   return usageError(io, "handoff needs leave, list, claim or cancel.");
 }
 
+// --last: the memories the prompt hook gave last. With one, the feedback goes to it; with several,
+// they are listed and the person picks one (no guessing which one was meant).
+function cmdFeedbackLast(io, dir, values) {
+  const last = lastGiven(dir);
+  if (last === null) {
+    io.stdout("The prompt hook has not given any memory yet (or its session files are gone after 7 days).");
+    return values.signal === undefined ? 0 : 1;
+  }
+  const when = String(last.at).slice(0, 16).replace("T", " ");
+  if (values.signal === undefined || last.ids.length > 1) {
+    if (values.json) io.stdout(JSON.stringify({ at: last.at, ids: last.ids }));
+    else {
+      io.stdout(`Last given by the prompt hook (${when} UTC): ${last.ids.join(", ")}`);
+      const example = last.ids.length > 1 ? "<id>" : last.ids[0];
+      io.stdout(`Give feedback with: stashpad feedback ${example} --signal helpful|stale|wrong${last.ids.length === 1 ? " (or --last --signal ...)" : ""}`);
+    }
+    return values.signal === undefined ? 0 : 1;
+  }
+  return cmdFeedback(io, dir, last.ids[0], values);
+}
+
 function cmdFeedback(io, dir, id, values) {
   if (values.signal === undefined) return usageError(io, "feedback needs --signal helpful, stale or wrong.");
   const r = giveFeedback(dir, id, { signal: values.signal, note: values.note ?? null, by: values.by ?? null });
@@ -648,8 +741,73 @@ function cmdFeedback(io, dir, id, values) {
   return 0;
 }
 
+function cmdAnchors(io, dir, command, [id, ...paths], values) {
+  const root = projectRoot(dir, io.cwd);
+  if (command === "anchor") {
+    if (!id || paths.length === 0) return usageError(io, "anchor needs an id and at least one path, for example: stashpad anchor tax-rules src/billing/tax.ts");
+    const { meta } = parseMemory(readMemory(dir, id).text);
+    if (!isCurrent(meta)) return usageError(io, `"${id}" is not current; only a current memory can be anchored.`);
+    const done = addAnchors(dir, id, root, paths.map((p) => pathFromUser(root, io.cwd, p)));
+    io.stdout(values.json ? JSON.stringify(done) : `Anchored ${id} to: ${done.files.join(", ")}. Recall, the brief and lint now say when these change.`);
+    return 0;
+  }
+  if (command === "unanchor") {
+    if (!id) return usageError(io, "unanchor needs an id, for example: stashpad unanchor tax-rules");
+    const done = removeAnchors(dir, id, paths.length ? paths.map((p) => pathFromUser(root, io.cwd, p)) : null);
+    io.stdout(values.json ? JSON.stringify(done) : done.removed.length ? `Removed ${done.removed.join(", ")} from ${id}.` : `Nothing changed for ${id}.`);
+    return 0;
+  }
+  const { anchors } = readAnchorsFile(dir);
+  const rows = Object.keys(anchors).sort().map((mid) => checkAnchors(dir, mid, { root, anchors })).filter((r) => !values.changed || r.changed);
+  if (values.json) {
+    io.stdout(JSON.stringify({ root, anchors: rows }));
+    return 0;
+  }
+  if (rows.length === 0) {
+    io.stdout(values.changed ? "No anchored memory has changed files." : "No memory is anchored to files. Add one with: stashpad anchor <id> <path>");
+    return 0;
+  }
+  for (const r of rows) {
+    io.stdout(`${r.id}${r.gone ? "  (all files gone)" : r.changed ? "  (changed)" : ""}`);
+    for (const f of r.files) io.stdout(`    ${f.state.padEnd(13)} ${f.path}${f.to ? ` -> ${f.to}` : ""}${f.reason ? ` (${f.reason})` : ""}`);
+  }
+  if (rows.some((r) => r.changed)) io.stdout("Check each changed one, then: stashpad confirm <id> (anchors it to the files as they are now).");
+  return 0;
+}
+
+function cmdShown(io, dir, values) {
+  if (values.clear) {
+    const removed = clearShown(dir);
+    io.stdout(removed ? "Cleared the log of what was shown." : "Nothing to clear.");
+    return 0;
+  }
+  if (values.since !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(values.since)) return usageError(io, "--since must be a date like 2026-10-01");
+  const since = values.today ? todayIso() : values.since ?? null;
+  const report = shownReport(dir, { since, session: values.session ?? null });
+  if (values.json) {
+    io.stdout(JSON.stringify(report));
+    return 0;
+  }
+  if (report.entries.length === 0) {
+    io.stdout("Nothing shown yet (with these filters). The hooks, the MCP read tools and brief, recall, search and get log here.");
+    return 0;
+  }
+  const limit = values.limit === undefined ? 20 : Number(values.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) return usageError(io, "--limit must be a whole number from 1 to 1000");
+  for (const e of report.entries.slice(-limit)) {
+    const when = String(e.at).slice(0, 16).replace("T", " ");
+    io.stdout(`${when}  ${e.event.padEnd(14)} ${String(e.ids.length).padStart(2)} memories  ${String(e.chars).padStart(6)} chars  ${e.ids.join(", ")}${e.session ? `  (session ${e.session.slice(0, 8)})` : ""}`);
+  }
+  if (report.entries.length > limit) io.stdout(`(${report.entries.length - limit} earlier entries; use --limit or --json)`);
+  for (const s of report.sessions.filter((x) => x.session !== "(no session)")) {
+    io.stdout(`Session ${s.session.slice(0, 8)}: ${s.events} outputs, ${s.ids.length} memories, ${s.chars} chars in total`);
+  }
+  if (report.most_shown.length) io.stdout(`Most shown: ${report.most_shown.map((m) => `${m.id} ${m.times}x`).join(", ")}`);
+  return 0;
+}
+
 function cmdLint(io, dir, values) {
-  const r = lint(dir);
+  const r = lint(dir, { cwd: io.cwd });
   if (values.json) io.stdout(JSON.stringify(r));
   else if (r.findings.length === 0) io.stdout(`Nothing to look at among ${r.checked} memories.`);
   else {
@@ -688,6 +846,8 @@ export async function run(argv, io = defaultIo()) {
     switch (command) {
       case "search":
         return cmdSearch(io, dir, positionals.slice(1), values);
+      case "decide":
+        return await cmdDecide(io, dir, positionals.slice(1), values);
       case "save":
         if (!id) return usageError(io, "save needs an id, for example: stashpad save db-choice ...");
         return await cmdSave(io, dir, id, values);
@@ -724,6 +884,8 @@ export async function run(argv, io = defaultIo()) {
         if (result.related.length > 0) io.stdout(`Mentioned with: ${result.related.map((r) => `${r.name} (${r.together})`).join(", ")}`);
         return 0;
       }
+      case "shown":
+        return cmdShown(io, dir, values);
       case "misses": {
         const rows = missReport(dir);
         if (values.json) io.stdout(JSON.stringify(rows));
@@ -775,9 +937,10 @@ export async function run(argv, io = defaultIo()) {
       case "recall": {
         const words = positionals.slice(1).join(" ").trim();
         if (!words) return usageError(io, 'recall needs words, for example: stashpad recall "add a database migration"');
-        const result = recall(dir, words);
-        if (values.json) io.stdout(JSON.stringify(result));
-        else io.stdout(result.text || "No clear match.");
+        const result = recall(dir, words, { cwd: io.cwd });
+        const out = values.json ? JSON.stringify(defuseValues(result)) : result.text ? fence(result.text) : "No clear match.";
+        io.stdout(out);
+        if (result.hits.length) logShown(dir, { event: "cli recall", ids: result.hits, chars: out.length });
         return 0;
       }
       case "hook": {
@@ -788,17 +951,45 @@ export async function run(argv, io = defaultIo()) {
         } catch {
           raw = "";
         }
+        // Paused for this project: the event is read and nothing is printed or written.
+        if (hooksPaused(dir, io.env)) return 0;
         const out = runHook(dir, id, parseEvent(raw), { globalDir: values.global ? null : globalStore(io.env) });
         if (typeof out === "object" && out?.error) io.stderr(`stashpad hook ${id}: ${out.error}`);
         else if (out) io.stdout(out);
+        return 0;
+      }
+      case "hooks": {
+        if (id !== undefined && id !== "on" && id !== "off") return usageError(io, "use: stashpad hooks [on|off]");
+        const result = id === undefined ? { store: dir, hooks: hooksPaused(dir, io.env) ? "off" : "on" } : setHooksPaused(dir, id === "off", io.env);
+        if (values.json) io.stdout(JSON.stringify(result));
+        else if (id === undefined) io.stdout(`Hooks are ${result.hooks} for ${dir}.${result.hooks === "off" ? " Turn them back on with: stashpad hooks on" : ""}`);
+        else io.stdout(id === "off" ? `Hooks are off for ${dir}: they print and write nothing until "stashpad hooks on". The command line and MCP keep working.` : `Hooks are on again for ${dir}.`);
+        return 0;
+      }
+      case "status-line": {
+        let raw = "";
+        try {
+          raw = io.stdinIsTTY ? "" : await io.readStdin();
+        } catch {
+          raw = "";
+        }
+        io.stdout(statusLine({ input: parseEvent(raw), cwd: io.cwd, env: io.env, explicit: values.dir, global: values.global === true }));
         return 0;
       }
       case "confirm": {
         if (!id) return usageError(io, "confirm needs an id, for example: stashpad confirm db-choice");
         const done = confirmMemory(dir, id);
         io.stdout(done.changed ? `Confirmed ${id} as still true today.` : `${id} was already confirmed today.`);
+        const again = reanchor(dir, id, projectRoot(dir, io.cwd));
+        if (again && (again.updated.length || again.dropped.length)) {
+          io.stdout(`Re-anchored ${id} to the files as they are now${again.updated.length ? ` (updated: ${again.updated.join(", ")})` : ""}${again.dropped.length ? `; dropped, gone: ${again.dropped.join(", ")}` : ""}.`);
+        }
         return 0;
       }
+      case "anchor":
+      case "unanchor":
+      case "anchors":
+        return cmdAnchors(io, dir, command, positionals.slice(1), values);
       case "forget":
         if (!id) return usageError(io, 'forget needs an id, for example: stashpad forget db-choice --reason "outdated"');
         return cmdForget(io, dir, id, values);
@@ -826,6 +1017,10 @@ export async function run(argv, io = defaultIo()) {
       case "handoff":
         return await cmdHandoff(io, dir, positionals.slice(1), values);
       case "feedback":
+        if (values.last) {
+          if (id) return usageError(io, "feedback --last takes no id; it uses the memory the prompt hook gave last.");
+          return cmdFeedbackLast(io, dir, values);
+        }
         if (!id) return usageError(io, "feedback needs an id, for example: stashpad feedback db-choice --signal stale");
         return cmdFeedback(io, dir, id, values);
       case "lint":

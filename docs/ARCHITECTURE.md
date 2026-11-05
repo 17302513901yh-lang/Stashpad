@@ -53,7 +53,11 @@ graph LR
   sources/              raw source copies (never change)
   audit.jsonl           every change, with a short content hash
   synonyms.json         optional word groups for search
+  pins.json             pinned memory ids (a person only)
+  anchors.json          files each memory is about, with their hashes (docs/FORMAT.md)
   .stashpad-store.json  format marker
+  .sessions/            hook state per agent session (ids only, git-ignored, pruned after 7 days),
+                        and shown.jsonl: which memory ids were shown to an agent, and how many characters
   .snapshots/           snapshots (daily automatic, manual, before restore and migrate)
   .stashpad.lock        only while a write is running
 ```
@@ -62,6 +66,9 @@ graph LR
 
 - A memory is never overwritten. A changed fact is a new memory that ends the old one.
 - Agent, tool and web writes wait for a person. A person's own writes go straight in.
-- Everything returned to an agent is labelled as data, not instructions.
+- Everything returned to an agent is labelled as data, not instructions. The brief, recall and handoffs come inside
+  one `<stashpad-data>` block; in all recalled text, tags that could pass for harness text (`</system-reminder>`,
+  `<system>`, `<instructions>`, `</stashpad-data>`, …) lose their `<` (it becomes `‹`), and control characters are
+  removed. Such tags are also flagged at write time, so review shows them.
 - No network access, no model calls, no telemetry.
 - Encryption is optional and off by default; when on, every data file and snapshot is sealed.

@@ -40,6 +40,62 @@ Nothing an agent or a web page writes can claim to be user-stated.
   multi-line values. Quotes are optional. This keeps diffs small and readable.
 - Dates are real calendar dates in `YYYY-MM-DD`.
 
+## Decisions: the choice, why, and what lost
+
+A decision is a memory of kind `decision`. When it is written with `stashpad decide` (or `stashpad_save` with `why`),
+its body follows a fixed layout that a person can read and Stashpad can parse:
+
+```markdown
+We use Postgres for the main database.
+Why: several workers write at the same time
+Rejected: SQLite, MongoDB
+Decided by: the team in the planning call
+```
+
+The first line is the choice; `Why:`, `Rejected:` and `Decided by:` are optional and come in this order. Recall and
+the brief show it as `We use Postgres for the main database. (rejected: SQLite, MongoDB; why: several workers write at
+the same time)`, so an agent that is about to propose SQLite sees that it lost, and why: a request that names a
+rejected option is enough to bring the decision up. A prompt that asks why (or about a decision, choice, convention
+or policy) puts matching decisions first.
+
+```bash
+stashpad decide "We use Postgres for the main database" --why "several workers write at the same time" --rejected "SQLite, MongoDB"
+stashpad decide "Tabs for indentation" --why "the linter wants them" --id indent-style --by "the team"
+```
+
+Without `--id` the id comes from the choice (`decision-we-use-postgres-for-the-main`). The other `save` options
+(`--source-ref`, `--source-type`, `--supersedes`, `--files`, `--expires`) work too; a person's decision is stored right
+away, an agent's waits for review.
+
+## Files a memory is about (anchors.json)
+
+A memory can be anchored to the files or folders it talks about, so recall, the brief and lint can say when they
+changed. The memory file does not change: anchors live next to the memories in `anchors.json`, like `pins.json`:
+
+```json
+{
+  "anchors": { "tax-rules": { "src/billing/tax.ts": "2f1c…", "src/billing/": "dir:9ab0…" } },
+  "requested": { "agent-note": ["src/db/schema.ts"] }
+}
+```
+
+- **Paths** are relative to the project: the folder that holds `.stashpad/memories` (else the git root of the current
+  folder). A folder ends in `/`. At most 20 per memory.
+- **Hashes** are git blob ids over LF line endings (so a Windows and a Linux checkout agree, with or without git). A
+  folder's hash covers the sorted list of its files and their hashes, so an added file counts too (at most 2000 files;
+  links, `.git` and `node_modules` are skipped).
+- **Who reads files:** Stashpad computes every hash itself. A person anchors with `stashpad save … --files a,b`,
+  `stashpad anchor <id> <path...>` or `stashpad confirm <id>` (which re-anchors to the files as they are now). An
+  agent can only ask (`stashpad_save` with `files`, kept under `requested`); the files are read when a person accepts
+  the memory and dropped when it is rejected.
+- **States:** same, changed, moved (the same content elsewhere in the project), moved and changed (the only file with
+  that name elsewhere), gone. Recall and the brief add a short note, skip a memory whose files are all gone, and
+  `stashpad lint` reports `anchor-changed` and `anchor-gone`. `stashpad anchors --changed` lists them.
+- **Safety:** paths in the file are treated as untrusted. Absolute paths, drive letters, UNC paths, `..`, device names
+  and `.git` are refused; the real path (links resolved) must stay inside the project; only regular files up to 5 MB
+  and folders are read. No git command is run. The file is sealed when the store is encrypted and is part of
+  snapshots.
+
 ## Check a folder
 
 ```bash

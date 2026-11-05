@@ -1,6 +1,6 @@
 // MCP server for Stashpad over stdio (newline-delimited JSON-RPC). No dependencies.
 // Agents get the following tools. Anything an agent writes waits for a person to accept it.
-import { DATA_LABEL, findInstructionLikeText } from "./security.mjs";
+import { DATA_LABEL, defuseValues, findInstructionLikeText } from "./security.mjs";
 import { parseMemory } from "./memory-format.mjs";
 import { VERSION } from "./version.mjs";
 import { aboutEntity } from "./entities.mjs";
@@ -15,6 +15,9 @@ import {
 } from "./store.mjs";
 import { createHandoff, listHandoffs, claimHandoff } from "./handoff.mjs";
 import { giveFeedback } from "./feedback.mjs";
+import { checkAnchors, checkRequested, requestAnchors } from "./anchors.mjs";
+import { logShown } from "./shown.mjs";
+import { decisionBody } from "./decisions.mjs";
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_INFO = { name: "stashpad", version: VERSION };
@@ -40,7 +43,7 @@ export const TOOLS = [
   {
     name: "stashpad_get",
     annotations: { readOnlyHint: true, openWorldHint: false },
-    description: "Read one memory by id, with its source, dates and text.",
+    description: "Read one memory by id, with its source, dates and text, and whether the files it is anchored to changed since it was saved.",
     inputSchema: {
       type: "object",
       properties: { id: { type: "string", description: "The memory id from stashpad_search." } },
@@ -60,7 +63,7 @@ export const TOOLS = [
     name: "stashpad_save",
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     description:
-      "Propose a new memory. It is not stored or searchable until a person accepts it. Give the source of the claim.",
+      "Propose a new memory. It is not stored or searchable until a person accepts it. Give the source of the claim. Name the files it is about in files, so recall can say when they change. For a decision, put the choice in text and give why (and rejected options): recall then shows why it was chosen.",
     inputSchema: {
       type: "object",
       properties: {
@@ -69,6 +72,14 @@ export const TOOLS = [
         text: { type: "string", description: "The memory, in plain words." },
         source_ref: { type: "string", description: "Where the claim comes from, one line." },
         supersedes: { type: "string", description: "Id of the memory this one replaces, if any." },
+        why: { type: "string", description: "kind decision only: why it was chosen, in one line." },
+        rejected: { type: "array", items: { type: "string" }, maxItems: 10, description: "kind decision only: the options that were considered and not chosen." },
+        files: {
+          type: "array",
+          items: { type: "string" },
+          maxItems: 20,
+          description: "Project-relative paths of the files or folders (ending in /) this memory is about. They are read when a person accepts it.",
+        },
       },
       required: ["id", "kind", "text", "source_ref"],
     },
@@ -142,8 +153,9 @@ function textResult(text, isError = false) {
   return { content: [{ type: "text", text }], ...(isError ? { isError: true } : {}) };
 }
 
+// Every string an agent gets back is defused: a stored "</system-reminder>" cannot pass for harness text.
 function jsonResult(value) {
-  return textResult(JSON.stringify(value, null, 2));
+  return textResult(JSON.stringify(defuseValues(value), null, 2));
 }
 
 function requireArgs(name, args, names) {
@@ -165,18 +177,29 @@ function callTool(name, args, dir) {
           asOf: args.as_of ? String(args.as_of) : null,
         });
         if (results.length === 0) logMiss(dir, String(args.query));
-        return jsonResult({ label: DATA_LABEL, searched: total, results });
+        const reply = jsonResult({ label: DATA_LABEL, searched: total, results });
+        logShown(dir, { event: "mcp search", ids: results.map((r) => r.id), chars: reply.content[0].text.length });
+        return reply;
       }
       case "stashpad_get": {
         requireArgs(name, args, ["id"]);
         const { text } = readMemory(dir, String(args.id));
         const { meta, body } = parseMemory(text);
-        return jsonResult({
+        let anchored = null;
+        try {
+          anchored = checkAnchors(dir, String(args.id));
+        } catch {
+          anchored = null;
+        }
+        const reply = jsonResult({
           label: DATA_LABEL,
           reads_like_instruction: findInstructionLikeText(body),
           ...meta,
           body,
+          ...(anchored ? { files: anchored.files } : {}),
         });
+        logShown(dir, { event: "mcp get", ids: [meta.id], chars: reply.content[0].text.length });
+        return reply;
       }
       case "stashpad_recent": {
         const limit = clampLimit(args.limit, 10, 50);
@@ -185,19 +208,28 @@ function callTool(name, args, dir) {
         const newest = [...rows]
           .sort((a, b) => (a.created_at === b.created_at ? a.id.localeCompare(b.id) : a.created_at < b.created_at ? 1 : -1))
           .slice(0, limit);
-        return jsonResult({ label: DATA_LABEL, memories: newest });
+        const reply = jsonResult({ label: DATA_LABEL, memories: newest });
+        logShown(dir, { event: "mcp recent", ids: newest.map((r) => r.id), chars: reply.content[0].text.length });
+        return reply;
       }
       case "stashpad_save": {
         requireArgs(name, args, ["id", "kind", "text", "source_ref"]);
+        // Paths only: they are checked now and read when a person accepts the memory.
+        const files = args.files === undefined ? [] : checkRequested(Array.isArray(args.files) ? args.files.map(String) : [String(args.files)]);
+        // A decision with a reason gets the fixed decision layout (choice, Why:, Rejected:).
+        const structured = args.why !== undefined || args.rejected !== undefined;
+        if (structured && String(args.kind) !== "decision") throw new StoreError("why and rejected are for kind decision only.");
+        const text = structured ? decisionBody({ choice: String(args.text), why: args.why === undefined ? null : String(args.why), rejected: Array.isArray(args.rejected) ? args.rejected.map(String) : args.rejected === undefined ? [] : [String(args.rejected)] }) : String(args.text);
         // Source type is fixed: an agent write is never a user statement.
         const result = saveMemory(dir, {
           id: String(args.id),
           kind: String(args.kind),
-          text: String(args.text),
+          text,
           sourceType: "agent",
           sourceRef: String(args.source_ref),
           supersedes: args.supersedes ? String(args.supersedes) : null,
         });
+        if (files.length) requestAnchors(dir, String(args.id), files);
         const hint =
           result.maybe_replaces.length > 0
             ? ` It looks related to: ${result.maybe_replaces.map((c) => c.id).join(", ")}. If it replaces one, propose it again with supersedes set to that id.`
