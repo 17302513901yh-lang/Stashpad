@@ -71,12 +71,15 @@ function checkText(text) {
   if (secrets.length > 0) throw new StoreError(`handoff not saved: this looks like a secret (${secrets.join(", ")}). Remove it.`);
 }
 
-// A git branch name, as git allows it, or nothing. Anything else is refused.
+// True for a git branch name as git allows it (and holding no secret).
+export function validBranch(branch) {
+  return typeof branch === "string" && branch.length <= 200 && /^[^\s\u0000-\u001f\u007f~^:?*[\\]+$/.test(branch) && !branch.includes("..") && findSecrets(branch).length === 0;
+}
+
+// A branch given by a person or agent: a valid name, or the handoff is refused.
 function checkBranch(branch) {
   if (branch === null || branch === undefined) return false;
-  if (typeof branch !== "string" || branch.length > 200 || !/^[^\s\u0000-\u001f\u007f~^:?*[\\]+$/.test(branch) || branch.includes("..") || findSecrets(branch).length > 0) {
-    throw new StoreError("branch must be a git branch name (no spaces, at most 200 characters).");
-  }
+  if (!validBranch(branch)) throw new StoreError("branch must be a git branch name (no spaces, at most 200 characters).");
   return true;
 }
 

@@ -5,7 +5,7 @@
 import { existsSync, openSync, readSync, closeSync, statSync } from "node:fs";
 import { relative, isAbsolute } from "node:path";
 import { buildBrief, DEFAULT_BRIEF_CHARS } from "./brief.mjs";
-import { createHandoff } from "./handoff.mjs";
+import { createHandoff, validBranch } from "./handoff.mjs";
 import { recall } from "./recall.mjs";
 import { readPins } from "./pins.mjs";
 import { fence, redactSecrets } from "./security.mjs";
@@ -149,10 +149,12 @@ export function handoffText(summary, reason, { git = null, unclean = null } = {}
     : [`Automatic note at ${reason}. It records what was going on; check the code and git status before acting on it.`];
   if (asks.length) parts.push(`Last requests: ${asks.map((a, i) => `(${i + 1}) ${clip(a, 220)}`).join(" ")}`);
   if (files.length) parts.push(`Files written: ${files.join(", ")}`);
-  if (git?.branch) parts.push(`Branch: ${mask(git.branch)}`);
+  const branch = git?.branch ? mask(git.branch) : null;
+  if (branch) parts.push(`Branch: ${branch}`);
   if (open.length) parts.push(`Uncommitted: ${open.slice(0, MAX_UNCOMMITTED).join(", ")}${open.length > MAX_UNCOMMITTED ? ` (+${open.length - MAX_UNCOMMITTED} more)` : ""}`);
   if (redacted) parts.push(`${redacted} secret(s) masked as [REDACTED].`);
-  return { text: parts.join("\n"), redacted, branch: git?.branch ?? null };
+  // The record keeps the branch only when it is a clean name; a masked one stays in the text only.
+  return { text: parts.join("\n"), redacted, branch: branch && validBranch(branch) ? branch : null };
 }
 
 // A session that wrote prompts but never reached the session end (crashed, killed, closed without

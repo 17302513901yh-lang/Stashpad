@@ -77,26 +77,29 @@ const SECRET_PATTERNS = [
 // the project's .env files (not .env.example and the like). Text holding one of these values is
 // refused too, even when it has no known shape. They are only compared in memory, never written
 // anywhere, and an error names the variable, never the value.
-const SECRET_NAME_PARTS = new Set(["KEY", "APIKEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "PASSPHRASE", "PASS", "AUTH", "CREDENTIAL", "CREDENTIALS", "DSN", "PRIVATE", "COOKIE"]);
-const NOT_SECRET_LAST = new Set(["ID", "NAME", "USER", "USERNAME", "HOST", "PORT", "FILE", "PATH", "DIR", "URL", "URI", "REGION", "TYPE", "MODE", "SOCK", "EMAIL", "LENGTH", "TIMEOUT", "TTL", "VERSION"]);
+// Only the last part of the name counts: DB_PASSWORD and GITHUB_TOKEN are secrets, PASSWORD_HASHER,
+// AUTH_PROVIDER and COOKIE_DOMAIN are settings.
+const SECRET_LAST_PARTS = new Set(["KEY", "APIKEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "PWD", "PASSPHRASE", "CREDENTIAL", "CREDENTIALS", "DSN"]);
 const ENV_FILE = /^\.env(?:\.[A-Za-z0-9_.-]+)?$/;
 const ENV_EXAMPLE = /\.(?:example|sample|template|dist|defaults?|schema)$/i;
 
 export function isSecretName(name) {
   const parts = String(name).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
-  if (parts.length === 0 || NOT_SECRET_LAST.has(parts.at(-1))) return false;
-  return parts.some((p) => SECRET_NAME_PARTS.has(p));
+  return parts.length > 0 && SECRET_LAST_PARTS.has(parts.at(-1));
 }
 
-function usableValue(value) {
+// A value worth comparing: long enough and mixed enough to look like a secret, not a word, a host,
+// a path, a URL without a login, or a reference to another variable.
+export function looksSecretValue(value) {
   if (typeof value !== "string") return false;
   const v = value.trim();
-  if (v.length < 8 || v.length > 4096) return false;
-  if (/^(?:true|false|yes|no|on|off|null|none|undefined|production|development|staging|test)$/i.test(v)) return false;
-  if (/^\d+$/.test(v) || /^(.)\1+$/.test(v)) return false;
+  if (v.length < 12 || v.length > 4096 || /\s/.test(v)) return false;
+  if (/\$\{[^}]*\}|^\$[A-Za-z_]/.test(v)) return false; // ${OTHER} or $OTHER
   if (/^(?:\/|~|\.{1,2}\/|[A-Za-z]:[\\/]|\\\\)/.test(v)) return false; // a path
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(v) && !/:\/\/[^\s/@]+:[^\s/@]+@/.test(v)) return false; // a URL without a login
-  return true;
+  if (/^(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)+)(?::\d{1,5})?$/i.test(v) && !/[0-9].*[A-Z]|[A-Z].*[0-9]/.test(v)) return false; // a host name, localhost:3000
+  const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((c) => c.test(v)).length;
+  return classes >= 2 && !/^(.)\1+$/.test(v);
 }
 
 function readEnvFile(path) {
@@ -125,7 +128,7 @@ export function localSecretValues({ env = process.env, cwd = process.cwd() } = {
   if (localCache && localCache.env === env && localCache.cwd === cwd) return localCache.values;
   const found = new Map();
   const keep = (name, value, where) => {
-    if (isSecretName(name) && usableValue(value) && !found.has(value.trim())) found.set(value.trim(), `${where} ${name}`);
+    if (isSecretName(name) && looksSecretValue(value) && !found.has(value.trim())) found.set(value.trim(), `${where} ${name}`);
   };
   for (const [name, value] of Object.entries(env ?? {})) keep(name, value, "environment variable");
   const folders = [...new Set([resolve(cwd), gitRoot(cwd)].filter(Boolean))];
@@ -148,9 +151,21 @@ export function resetLocalSecrets() {
   localCache = null;
 }
 
+// Where a value stands on its own in the text (not as part of a longer word or token).
+const WORDISH = /[A-Za-z0-9_-]/;
+function positions(text, value) {
+  const out = [];
+  for (let at = text.indexOf(value); at !== -1; at = text.indexOf(value, at + 1)) {
+    const before = at > 0 ? text[at - 1] : "";
+    const after = text[at + value.length] ?? "";
+    if (!(before && WORDISH.test(before) && WORDISH.test(value[0])) && !(after && WORDISH.test(after) && WORDISH.test(value.at(-1)))) out.push(at);
+  }
+  return out;
+}
+
 function localHits(text) {
   try {
-    return localSecretValues().filter(({ value }) => text.includes(value));
+    return localSecretValues().filter(({ value }) => positions(text, value).length > 0);
   } catch {
     return [];
   }
@@ -164,9 +179,10 @@ export function redactSecrets(text) {
   let out = normalizeForScan(String(text));
   let count = 0;
   for (const { value } of localHits(out).sort((a, b) => b.value.length - a.value.length)) {
-    const parts = out.split(value);
-    count += parts.length - 1;
-    out = parts.join("[REDACTED]");
+    for (const at of positions(out, value).reverse()) {
+      out = `${out.slice(0, at)}[REDACTED]${out.slice(at + value.length)}`;
+      count += 1;
+    }
   }
   for (const { pattern } of SECRET_PATTERNS) {
     out = out.replace(globalOf(pattern), (...args) => {
