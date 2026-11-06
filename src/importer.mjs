@@ -7,6 +7,7 @@ import { StoreError, saveMemory } from "./store.mjs";
 export function parseImport(content, format) {
   const items = [];
   const errors = [];
+  if (content.startsWith("\uFEFF")) content = content.slice(1);
 
   if (format === "jsonl") {
     content.split("\n").forEach((line, index) => {

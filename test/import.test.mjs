@@ -82,3 +82,19 @@ test("CLI: import --format rejects an unknown format", async () => {
   assert.equal(await run(["import", file, "--format", "yaml", "--dir", join(dir, "store")], io), 1);
   assert.match(err[0], /unknown format "yaml"/);
 });
+
+test("JSON Lines: a byte order mark and CRLF endings keep the first line", () => {
+  const content = "\uFEFF" + [
+    '{"id":"bom-a","kind":"fact","text":"First imported fact."}',
+    '{"id":"bom-b","kind":"fact","text":"Second imported fact."}',
+  ].join("\r\n");
+  const { items, errors } = parseImport(content, "jsonl");
+  assert.deepEqual(errors, []);
+  assert.deepEqual(items.map((item) => item.id), ["bom-a", "bom-b"]);
+});
+
+test("a byte order mark inside the text is left alone", () => {
+  const content = '{"id":"bom-middle","kind":"fact","text":"Name: \uFEFFinside"}';
+  const { items } = parseImport(content, "jsonl");
+  assert.equal(items[0].text, "Name: \uFEFFinside");
+});
