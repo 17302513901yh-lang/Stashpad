@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { buildBrief } from "../src/brief.mjs";
-import { gitBinary, gitStatus, currentBranch } from "../src/git.mjs";
+import { gitBinary, gitEnv, gitStatus, currentBranch } from "../src/git.mjs";
 import { claimHandoff, createHandoff, listHandoffs } from "../src/handoff.mjs";
 import { runHook, trustedCwd, trustedTranscript } from "../src/hooks.mjs";
 import { saveMemory } from "../src/store.mjs";
@@ -61,6 +61,18 @@ test("a repository's fsmonitor setting cannot make the hook run a program", { sk
   git("config", "core.fsmonitor", script);
   assert.ok(gitStatus(root));
   assert.equal(existsSync(marker), false);
+});
+
+test("git runs without GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE or any other GIT_* variable", { skip: !hasGit && "git is not installed" }, () => {
+  const env = gitEnv({ PATH: "/usr/bin", GIT_DIR: "/elsewhere/.git", GIT_WORK_TREE: "/elsewhere", GIT_INDEX_FILE: "/tmp/index", GIT_CONFIG_COUNT: "1", git_dir: "x" });
+  assert.deepEqual(Object.keys(env).sort(), ["GIT_OPTIONAL_LOCKS", "GIT_TERMINAL_PROMPT", "PATH"]);
+  // A hook started by git (GIT_DIR pointing at another repository) still reports the folder it is in.
+  const { root } = repo();
+  const other = repo();
+  writeFileSync(join(other.root, "other.js"), "export {};\n");
+  const status = gitStatus(root, { env: { ...process.env, GIT_DIR: join(other.root, ".git"), GIT_WORK_TREE: other.root, GIT_INDEX_FILE: join(other.root, ".git", "index") } });
+  assert.deepEqual(status.files.sort(), ["app.js", "login.js"]);
+  assert.equal(status.branch, "feature/login");
 });
 
 test("a session that never reached its end leaves a note at the next start, once", () => {

@@ -35,9 +35,12 @@ such session and is added beside the other open `auto` handoffs; it never expire
 are used only when the transcript lies under `~/.claude` or `~/.codex` (or next to the transcript the hook was given)
 and the folder is inside the project, because the store, and so the session file, may be committed.
 
-`git status` runs with the repository's `core.fsmonitor` switched off (a repository's config cannot make Stashpad
-start a program), without taking the index lock, from an absolute path to git, and with a 2 second limit; without git
-the note simply has no branch or file list. The branch is read from `.git/HEAD`. A handoff can carry a branch by
+`git status` runs with the repository's `core.fsmonitor` switched off, without any `GIT_*` variable from the
+environment (such as `GIT_DIR`, `GIT_WORK_TREE` or `GIT_INDEX_FILE` set by a git hook), without taking the index
+lock, from an absolute path to git, and with a 2 second limit; without git the note simply has no branch or file list.
+This does not make `git status` safe in a repository you do not trust: a filter driver in the repository's config
+(`filter.<name>.clean` or `.process`, used through `.gitattributes`) can still run a program, as with any git
+command you run there yourself. The branch is read from `.git/HEAD`. A handoff can carry a branch by
 hand too: `stashpad handoff leave --text "…" --branch feature/login`. When the open handoff was left on another
 branch than the one checked out, the brief says so.
 
