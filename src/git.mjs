@@ -3,8 +3,13 @@
 // run carefully, because a repository's own config can name programs for git to run:
 //   - git is found as an absolute path in an absolute PATH folder (never "." or a relative folder),
 //   - core.fsmonitor is switched off (it names a program that git status would start),
+//   - every GIT_* variable is left out of its environment (GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE,
+//     GIT_CONFIG_* ... set by a git hook or a shell would point it at another repository or config),
 //   - GIT_OPTIONAL_LOCKS=0, so it never takes the index lock from the user's own git,
 //   - a 2 second time limit, and any failure is simply "no answer".
+// This does not make git status safe in a repository you do not trust: a filter driver named in the
+// repository's config and .gitattributes (filter.<name>.clean or .process) can still run when git
+// looks at a changed file's content. Stashpad runs it only in the folder the agent is working in.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
@@ -70,6 +75,15 @@ export function currentBranch(start) {
 }
 
 // { branch, files } for a working copy, or null when git is missing, fails or takes too long.
+// The environment for git: the caller's, without any GIT_* variable, plus Stashpad's own settings.
+export function gitEnv(env = process.env) {
+  const out = {};
+  for (const [name, value] of Object.entries(env ?? {})) {
+    if (!/^GIT_/i.test(name)) out[name] = value;
+  }
+  return { ...out, GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" };
+}
+
 export function gitStatus(cwd, { timeout = 2000, env = process.env } = {}) {
   const git = gitBinary(env);
   if (!git || !cwd || !existsSync(cwd)) return null;
@@ -80,7 +94,7 @@ export function gitStatus(cwd, { timeout = 2000, env = process.env } = {}) {
       timeout,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
-      env: { ...env, GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" },
+      env: gitEnv(env),
       maxBuffer: 4 * 1024 * 1024,
       windowsHide: true,
     });

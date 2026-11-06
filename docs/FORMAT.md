@@ -75,21 +75,27 @@ changed. The memory file does not change: anchors live next to the memories in `
 ```json
 {
   "anchors": { "tax-rules": { "src/billing/tax.ts": "2f1c…", "src/billing/": "dir:9ab0…" } },
-  "requested": { "agent-note": ["src/db/schema.ts"] }
+  "requested": { "agent-note": ["src/db/schema.ts"] },
+  "sizes": { "tax-rules": { "src/billing/tax.ts": 1234 } }
 }
 ```
 
-- **Paths** are relative to the project: the folder that holds `.stashpad/memories` (else the git root of the current
-  folder). A folder ends in `/`. At most 20 per memory.
+- **Paths** are relative to the project: the folder that holds `.stashpad/memories` (else the top of the current
+  checkout). In a git worktree they are relative to the worktree itself, also when the store sits in the main checkout.
+  A folder ends in `/`. At most 20 per memory. Memories in the global store cannot be anchored.
 - **Hashes** are git blob ids over LF line endings (so a Windows and a Linux checkout agree, with or without git). A
   folder's hash covers the sorted list of its files and their hashes, so an added file counts too (at most 2000 files;
-  links, `.git` and `node_modules` are skipped).
+  links, `.git`, `node_modules` and build or cache folders such as `dist`, `build`, `target`, `.venv` and `.godot` are
+  skipped). `sizes` keeps each anchored file's size (over LF line endings), so a moved file is looked for among files
+  of a fitting size only.
 - **Who reads files:** Stashpad computes every hash itself. A person anchors with `stashpad save … --files a,b`,
   `stashpad anchor <id> <path...>` or `stashpad confirm <id>` (which re-anchors to the files as they are now). An
   agent can only ask (`stashpad_save` with `files`, kept under `requested`); the files are read when a person accepts
   the memory and dropped when it is rejected.
 - **States:** same, changed, moved (the same content elsewhere in the project), moved and changed (the only file with
-  that name elsewhere), gone. Recall and the brief add a short note, skip a memory whose files are all gone, and
+  that name elsewhere), gone. The hooks do not look for moved files (they say "missing here"; `stashpad anchors` and
+  lint look), and one round of checks reads at most 50 MB; hashes are cached in `.sessions/anchor-hashes.json` by path,
+  size and modification time. Recall and the brief add a short note, skip a memory whose files are all gone, and
   `stashpad lint` reports `anchor-changed` and `anchor-gone`. `stashpad anchors --changed` lists them.
 - **Safety:** paths in the file are treated as untrusted. Absolute paths, drive letters, UNC paths, `..`, device names
   and `.git` are refused; the real path (links resolved) must stay inside the project; only regular files up to 5 MB

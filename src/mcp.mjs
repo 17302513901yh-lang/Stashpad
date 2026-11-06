@@ -15,7 +15,7 @@ import {
 } from "./store.mjs";
 import { createHandoff, listHandoffs, claimHandoff } from "./handoff.mjs";
 import { giveFeedback } from "./feedback.mjs";
-import { checkAnchors, checkRequested, requestAnchors } from "./anchors.mjs";
+import { checkAnchors, checkRequested, refuseGlobalAnchors, requestAnchors } from "./anchors.mjs";
 import { logShown } from "./shown.mjs";
 import { decisionBody } from "./decisions.mjs";
 
@@ -216,6 +216,7 @@ function callTool(name, args, dir) {
         requireArgs(name, args, ["id", "kind", "text", "source_ref"]);
         // Paths only: they are checked now and read when a person accepts the memory.
         const files = args.files === undefined ? [] : checkRequested(Array.isArray(args.files) ? args.files.map(String) : [String(args.files)]);
+        if (files.length) refuseGlobalAnchors(dir);
         // A decision with a reason gets the fixed decision layout (choice, Why:, Rejected:).
         const structured = args.why !== undefined || args.rejected !== undefined;
         if (structured && String(args.kind) !== "decision") throw new StoreError("why and rejected are for kind decision only.");

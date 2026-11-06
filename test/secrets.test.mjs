@@ -4,8 +4,8 @@ import { mkdtempSync, writeFileSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { claimHandoff, listHandoffs } from "../src/handoff.mjs";
-import { runHook } from "../src/hooks.mjs";
-import { findSecrets, isSecretName, localSecretValues, redactSecrets, resetLocalSecrets } from "../src/security.mjs";
+import { handoffText, runHook } from "../src/hooks.mjs";
+import { findSecrets, isSecretName, localSecretValues, looksSecretValue, redactSecrets, resetLocalSecrets } from "../src/security.mjs";
 import { saveMemory } from "../src/store.mjs";
 
 const fresh = () => join(mkdtempSync(join(tmpdir(), "stashpad-secret-")), "s");
@@ -76,11 +76,42 @@ test("values this computer holds in secret-named variables are refused, without 
 
 test("the project's .env files count, .env.example does not, and paths and plain words are skipped", () => {
   const cwd = mkdtempSync(join(tmpdir(), "stashpad-envfile-"));
-  writeFileSync(join(cwd, ".env"), ["# local", "export API_KEY=" + fake("live", "-value-", "9f8e7d6c"), 'DB_PASSWORD="' + fake("quoted ", "pass phrase") + '"', "NODE_ENV=production", "CACHE_DIR=/var/cache/app", "PORT=3000"].join("\n"));
+  writeFileSync(join(cwd, ".env"), ["# local", "export API_KEY=" + fake("live", "-value-", "9f8e7d6c"), "DB_PASSWORD=\"" + fake("Quoted-", "Pass-99x") + "\"", "COOKIE_DOMAIN=localhost", "AUTH_PROVIDER=keycloak", "PASSWORD_HASHER=argon2id", "AUTH_STRATEGY=database", "REPLICA_PASSWORD=${POSTGRES_PASSWORD}", "SHORT_TOKEN=abc123", "NODE_ENV=production", "CACHE_DIR=/var/cache/app", "PORT=3000"].join("\n"));
   writeFileSync(join(cwd, ".env.example"), "STRIPE_SECRET=" + fake("example", "-not-real-1234") + "\n");
   const values = localSecretValues({ env: {}, cwd }).map((v) => v.label);
   assert.deepEqual(values.sort(), [".env API_KEY", ".env DB_PASSWORD"]);
   resetLocalSecrets();
+});
+
+test("settings with secret-sounding words are not secrets, and values match whole tokens only", () => {
+  const env = { COOKIE_DOMAIN: "localhost", AUTH_PROVIDER: "keycloak", PASSWORD_HASHER: "argon2id", AUTH_STRATEGY: "database", DB_PASSWORD: "${POSTGRES_PASSWORD}", PRIVATE_REGISTRY: "registry.internal.example", SERVICE_TOKEN: fake("Tok", "en-99-ab", "cdEF") };
+  Object.assign(process.env, env);
+  resetLocalSecrets();
+  try {
+    for (const text of ["Dev server runs on localhost:3000", "We hash passwords with argon2id", "Login goes through keycloak", "Sessions are stored in the database table", "Images come from registry.internal.example"]) {
+      assert.deepEqual(findSecrets(text), [], text);
+    }
+    assert.ok(findSecrets(`header ${env.SERVICE_TOKEN} here`).some((s) => /SERVICE_TOKEN/.test(s)));
+    assert.deepEqual(findSecrets(`x${env.SERVICE_TOKEN}y`), [], "part of a longer token is not the value");
+  } finally {
+    for (const key of Object.keys(env)) delete process.env[key];
+    resetLocalSecrets();
+  }
+  assert.equal(isSecretName("PASSWORD_HASHER"), false);
+  assert.equal(isSecretName("AUTH_PROVIDER"), false);
+  assert.equal(isSecretName("COOKIE_SECRET"), true);
+  for (const v of ["localhost:3000", "db.internal.example:5432", "${POSTGRES_PASSWORD}", "$POSTGRES_PASSWORD", "argon2id", "correct horse battery staple"]) assert.equal(looksSecretValue(v), false, v);
+});
+
+test("a branch name that holds a secret is masked in the handoff text, not a reason to lose the handoff", () => {
+  const dir = fresh();
+  saveMemory(dir, { id: "a", kind: "fact", text: "The store exists for this test.", sourceType: "user", sourceRef: "t" });
+  const secret = fake("ghp_", "abcdefghijklmnopqrstuvwxyz0123456789");
+  const written = handoffText({ asks: ["Finish the login page"], files: [] }, "the end of a session", { git: { branch: `feat/${secret}`, files: [] } });
+  assert.match(written.text, /Branch: feat\/\[REDACTED\]/);
+  assert.equal(written.branch, null);
+  const ok = handoffText({ asks: ["Finish the login page"], files: [] }, "x", { git: { branch: "feat/keycloak-login", files: [] } });
+  assert.equal(ok.branch, "feat/keycloak-login");
 });
 
 test("the automatic handoff masks a secret and keeps the request", () => {

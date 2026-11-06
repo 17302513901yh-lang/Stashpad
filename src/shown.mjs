@@ -4,18 +4,22 @@
 // "stashpad shown". The log is capped like misses.jsonl, sealed in an encrypted store and kept out of
 // git with the rest of .sessions/. A small summary (last-shown.json: the day each memory was last
 // shown, and since when that is tracked) outlives the cap, so lint can name memories nobody used.
+// The log is cut by bytes (one sealed line can be long), and once a day the summary drops ids whose
+// memory file no longer exists.
 // Logging never fails the command that shows something.
 import { appendFileSync, existsSync, lstatSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { writeAtomic } from "./fsx.mjs";
+import { filePath } from "./store.mjs";
 import { ensureSessionsDir, sessionKey, sessionsDir } from "./sessions.mjs";
 import { openLine, openText, sealFor, sealLine } from "./vault.mjs";
 import { StoreError } from "./errors.mjs";
 
 export const SHOWN_FILE = "shown.jsonl";
 export const LAST_SHOWN_FILE = "last-shown.json";
-const MAX_BYTES = 200 * 1024;
-const KEEP_LINES = 1000;
+export const MAX_SHOWN_BYTES = 200 * 1024;
+// After a cut the log keeps the newest lines that fit in half the limit, so it is not cut on every write.
+const KEEP_BYTES = MAX_SHOWN_BYTES / 2;
 
 const day = (now) => now.toISOString().slice(0, 10);
 
@@ -24,7 +28,7 @@ function readSummary(dir) {
   if (!existsSync(path) || !lstatSync(path).isFile()) return { since: null, last: {}, count: {} };
   try {
     const data = JSON.parse(openText(dir, readFileSync(path, "utf8")));
-    return { since: typeof data.since === "string" ? data.since : null, last: data.last ?? {}, count: data.count ?? {} };
+    return { since: typeof data.since === "string" ? data.since : null, last: data.last ?? {}, count: data.count ?? {}, ...(typeof data.pruned === "string" ? { pruned: data.pruned } : {}) };
   } catch (error) {
     if (error instanceof StoreError) throw error;
     return { since: null, last: {}, count: {} };
@@ -39,12 +43,13 @@ export function logShown(dir, { event, ids = [], chars = 0, session = null, now 
     const entry = { at: now.toISOString(), session: sessionKey(session), event: String(event).slice(0, 40), ids: unique, chars: Number(chars) || 0 };
     const path = join(folder, SHOWN_FILE);
     appendFileSync(path, `${sealLine(dir, JSON.stringify(entry))}\n`);
-    if (statSync(path).size > MAX_BYTES) {
-      const lines = readFileSync(path, "utf8").split("\n").filter(Boolean);
-      writeAtomic(path, `${lines.slice(-KEEP_LINES).join("\n")}\n`);
-    }
+    if (statSync(path).size > MAX_SHOWN_BYTES) writeAtomic(path, newestLines(readFileSync(path, "utf8"), KEEP_BYTES));
     const summary = readSummary(dir);
     summary.since ??= day(now);
+    if (summary.pruned !== day(now)) {
+      pruneSummary(dir, summary);
+      summary.pruned = day(now);
+    }
     for (const id of unique) {
       summary.last[id] = day(now);
       summary.count[id] = (summary.count[id] ?? 0) + 1;
@@ -52,6 +57,30 @@ export function logShown(dir, { event, ids = [], chars = 0, session = null, now 
     writeAtomic(join(folder, LAST_SHOWN_FILE), sealFor(dir, `${JSON.stringify(summary)}\n`));
   } catch {
     // a log line that cannot be written is not worth an error
+  }
+}
+
+// The newest whole lines of a log that fit in maxBytes.
+export function newestLines(text, maxBytes) {
+  const lines = text.split("\n").filter(Boolean);
+  const keep = [];
+  let bytes = 0;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const size = Buffer.byteLength(lines[i]) + 1;
+    if (bytes + size > maxBytes) break;
+    keep.push(lines[i]);
+    bytes += size;
+  }
+  return keep.length ? `${keep.reverse().join("\n")}\n` : "";
+}
+
+// Drops ids whose memory file is gone from the summary.
+function pruneSummary(dir, summary) {
+  for (const id of new Set([...Object.keys(summary.last), ...Object.keys(summary.count)])) {
+    if (!existsSync(filePath(dir, id))) {
+      delete summary.last[id];
+      delete summary.count[id];
+    }
   }
 }
 

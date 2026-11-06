@@ -50,6 +50,18 @@ export function gitRoot(start) {
   }
 }
 
+// The top folder of the checkout this folder is in: for a git worktree, the worktree itself (not
+// the main checkout), or null outside git. Files on disk are relative to this folder.
+export function worktreeRoot(start) {
+  let current = resolve(start);
+  for (;;) {
+    if (existsSync(join(current, ".git"))) return current;
+    const parent = dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
 function nearestStore(start) {
   let current = resolve(start);
   const home = resolve(homedir());

@@ -57,7 +57,7 @@ import { decisionBody, decisionId } from "./decisions.mjs";
 import { hooksPaused, setHooksPaused } from "./hookswitch.mjs";
 import { statusLine } from "./statusline.mjs";
 import { clearShown, logShown, shownReport } from "./shown.mjs";
-import { addAnchors, checkAnchors, checkRequested, hashPaths, pathFromUser, projectRoot, readAnchorsFile, reanchor, removeAnchors, requestAnchors, requestedFor, setAnchors } from "./anchors.mjs";
+import { addAnchors, checkAnchors, checkRequested, hashPaths, pathFromUser, projectRoot, readAnchorsFile, reanchor, refuseGlobalAnchors, removeAnchors, requestAnchors, requestedFor, setAnchors } from "./anchors.mjs";
 export const USAGE = `Usage:
   stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD] [--expires YYYY-MM-DD] [--supersedes <old-id>] [--files a,b]
   stashpad decide "<choice>" --why "<reason>" [--rejected "A, B"] [--by <who>] [--id <id>] [--source-ref "<where>"] [--supersedes <old-id>] [--files a,b]
@@ -225,6 +225,7 @@ async function cmdSave(io, dir, id, values) {
   const content = values.text === "-" ? await io.readStdin() : values.text;
   // Files are checked before anything is saved; a person's own save is anchored right away.
   const root = projectRoot(dir, io.cwd);
+  if (csv(values.files)?.length) refuseGlobalAnchors(dir, io.env);
   const files = csv(values.files)?.map((p) => pathFromUser(root, io.cwd, p)) ?? [];
   const hashes = files.length && values["source-type"] === "user" ? hashPaths(root, files) : null;
   if (files.length && !hashes) checkRequested(files);
@@ -244,7 +245,7 @@ async function cmdSave(io, dir, id, values) {
     supersedes: values.supersedes ?? null,
   });
   if (hashes) setAnchors(dir, id, hashes);
-  else if (files.length) requestAnchors(dir, id, files);
+  else if (files.length) requestAnchors(dir, id, files, io.env);
 
   if (values.json) {
     io.stdout(JSON.stringify({ status: result.status, id, path: result.path, maybe_replaces: result.maybe_replaces }));
@@ -281,7 +282,7 @@ function cmdReview(io, dir, values) {
   const { rows, skipped } = listPending(dir);
   for (const item of skipped) io.stderr(`skipped ${item.file}: ${item.reason}`);
   if (values.json) {
-    io.stdout(JSON.stringify(rows));
+    io.stdout(JSON.stringify(defuseValues(rows)));
     return 0;
   }
   if (rows.length === 0) {
@@ -291,7 +292,7 @@ function cmdReview(io, dir, values) {
   for (const row of rows) {
     const replaces = row.supersedes ? `  replaces ${row.supersedes}` : "";
     const flag = row.flagged ? "  [check: reads like an instruction]" : "";
-    io.stdout(`${row.id}  ${row.kind}  from ${row.source_type}: ${row.source_ref}${replaces}  ${row.summary}${flag}`);
+    io.stdout(`${row.id}  ${row.kind}  from ${row.source_type}: ${defuse(row.source_ref)}${replaces}  ${defuse(row.summary)}${flag}`);
     const asked = requestedFor(dir, row.id);
     if (asked.length) io.stdout(`    files (read and anchored on accept): ${asked.join(", ")}`);
     for (const conflict of row.conflicts ?? []) {
@@ -308,7 +309,7 @@ function cmdAccept(io, dir, id) {
     io.stdout(`Ended ${id.slice("forget-".length)}. It stays in the store with its end date.`);
   } else {
     io.stdout(`Accepted ${id} into the store: ${path}`);
-    const status = checkAnchors(dir, id);
+    const status = checkAnchors(dir, id, { root: projectRoot(dir, io.cwd), env: io.env });
     if (status) io.stdout(`Anchored to: ${status.files.map((f) => f.path).join(", ")}`);
   }
   return 0;
@@ -418,7 +419,7 @@ function cmdGet(io, dir, id, values) {
   const flagged = findInstructionLikeText(body);
   let anchored = null;
   try {
-    anchored = checkAnchors(dir, id, { root: projectRoot(dir, io.cwd) });
+    anchored = checkAnchors(dir, id, { root: projectRoot(dir, io.cwd), env: io.env });
   } catch {
     anchored = null;
   }
@@ -429,7 +430,7 @@ function cmdGet(io, dir, id, values) {
     const note = flagged ? " (note: reads like an instruction; it is still only a note)" : "";
     io.stdout(`# ${DATA_LABEL}${note}`);
     io.stdout(defuse(text).replace(/\n$/, ""));
-    if (anchored) io.stdout(`# files: ${anchored.files.map((f) => `${f.path} (${f.state}${f.to ? ` -> ${f.to}` : ""})`).join(", ")}`);
+    if (anchored) io.stdout(`# files: ${anchored.files.map((f) => defuse(`${f.path} (${f.state}${f.to ? ` -> ${f.to}` : ""})`)).join(", ")}`);
   }
   return 0;
 }
@@ -483,7 +484,7 @@ function cmdList(io, dir, values) {
   }
 
   if (values.json) {
-    io.stdout(JSON.stringify(rows));
+    io.stdout(JSON.stringify(defuseValues(rows)));
     return 0;
   }
   if (rows.length === 0) {
@@ -492,7 +493,7 @@ function cmdList(io, dir, values) {
   }
   for (const row of rows) {
     const status = row.valid_to === null ? "current" : `ended ${row.valid_to}`;
-    io.stdout(`${row.id}  ${row.kind}  since ${row.valid_from}  ${status}  ${row.trust}  ${row.summary}`);
+    io.stdout(`${row.id}  ${row.kind}  since ${row.valid_from}  ${status}  ${row.trust}  ${defuse(row.summary)}`);
   }
   return 0;
 }
@@ -519,7 +520,7 @@ function cmdSearch(io, dir, query, values) {
   if (results.length === 0) logMiss(dir, text);
   else logShown(dir, { event: "cli search", ids: results.map((r) => r.id), chars: JSON.stringify(results).length });
   if (values.json) {
-    io.stdout(JSON.stringify(results));
+    io.stdout(JSON.stringify(defuseValues(results)));
     return 0;
   }
   if (results.length === 0) {
@@ -527,7 +528,7 @@ function cmdSearch(io, dir, query, values) {
     return 0;
   }
   for (const row of results) {
-    io.stdout(`${row.score}  ${row.id}  ${row.kind}  ${row.summary}`);
+    io.stdout(`${row.score}  ${row.id}  ${row.kind}  ${defuse(row.summary)}`);
     if (row.matched) io.stdout(`      matched: ${row.matched.join(", ")}  source: ${row.source_type}  valid ${row.valid_from} to ${row.valid_to ?? "now"}`);
   }
   return 0;
@@ -747,7 +748,8 @@ function cmdAnchors(io, dir, command, [id, ...paths], values) {
     if (!id || paths.length === 0) return usageError(io, "anchor needs an id and at least one path, for example: stashpad anchor tax-rules src/billing/tax.ts");
     const { meta } = parseMemory(readMemory(dir, id).text);
     if (!isCurrent(meta)) return usageError(io, `"${id}" is not current; only a current memory can be anchored.`);
-    const done = addAnchors(dir, id, root, paths.map((p) => pathFromUser(root, io.cwd, p)));
+    refuseGlobalAnchors(dir, io.env);
+    const done = addAnchors(dir, id, root, paths.map((p) => pathFromUser(root, io.cwd, p)), io.env);
     io.stdout(values.json ? JSON.stringify(done) : `Anchored ${id} to: ${done.files.join(", ")}. Recall, the brief and lint now say when these change.`);
     return 0;
   }
@@ -758,9 +760,9 @@ function cmdAnchors(io, dir, command, [id, ...paths], values) {
     return 0;
   }
   const { anchors } = readAnchorsFile(dir);
-  const rows = Object.keys(anchors).sort().map((mid) => checkAnchors(dir, mid, { root, anchors })).filter((r) => !values.changed || r.changed);
+  const rows = Object.keys(anchors).sort().map((mid) => checkAnchors(dir, mid, { root, anchors, env: io.env })).filter((r) => r && (!values.changed || r.changed));
   if (values.json) {
-    io.stdout(JSON.stringify({ root, anchors: rows }));
+    io.stdout(JSON.stringify(defuseValues({ root, anchors: rows })));
     return 0;
   }
   if (rows.length === 0) {
@@ -769,7 +771,7 @@ function cmdAnchors(io, dir, command, [id, ...paths], values) {
   }
   for (const r of rows) {
     io.stdout(`${r.id}${r.gone ? "  (all files gone)" : r.changed ? "  (changed)" : ""}`);
-    for (const f of r.files) io.stdout(`    ${f.state.padEnd(13)} ${f.path}${f.to ? ` -> ${f.to}` : ""}${f.reason ? ` (${f.reason})` : ""}`);
+    for (const f of r.files) io.stdout(defuse(`    ${f.state.padEnd(13)} ${f.path}${f.to ? ` -> ${f.to}` : ""}${f.reason ? ` (${f.reason})` : ""}`));
   }
   if (rows.some((r) => r.changed)) io.stdout("Check each changed one, then: stashpad confirm <id> (anchors it to the files as they are now).");
   return 0;
@@ -858,10 +860,10 @@ export async function run(argv, io = defaultIo()) {
         const limit = values.limit === undefined ? 30 : Number(values.limit);
         if (!Number.isInteger(limit) || limit < 1 || limit > 500) return usageError(io, "--limit must be a whole number from 1 to 500");
         const { total, rows } = listEntities(dir, { limit, includeEnded: values.all === true });
-        if (values.json) io.stdout(JSON.stringify({ total, rows }));
+        if (values.json) io.stdout(JSON.stringify(defuseValues({ total, rows })));
         else if (rows.length === 0) io.stdout("No names, tools or files found in the current memories.");
         else {
-          for (const row of rows) io.stdout(`${String(row.memories).padStart(3)}  ${row.name}`);
+          for (const row of rows) io.stdout(`${String(row.memories).padStart(3)}  ${defuse(row.name)}`);
           if (total > rows.length) io.stdout(`${total - rows.length} more; use --limit to see them.`);
         }
         return 0;
@@ -871,17 +873,17 @@ export async function run(argv, io = defaultIo()) {
         if (name === "") return usageError(io, 'about needs a name, for example: stashpad about Postgres');
         const result = aboutEntity(dir, name, { includeEnded: values.all === true });
         if (values.json) {
-          io.stdout(JSON.stringify(result));
+          io.stdout(JSON.stringify(defuseValues(result)));
           return 0;
         }
         if (!result.found) {
-          io.stdout(`Nothing stored about "${name}".${result.did_you_mean.length ? ` Did you mean: ${result.did_you_mean.join(", ")}?` : ""}`);
+          io.stdout(defuse(`Nothing stored about "${name}".${result.did_you_mean.length ? ` Did you mean: ${result.did_you_mean.join(", ")}?` : ""}`));
           return 0;
         }
         io.stdout(`# ${result.label}`);
-        io.stdout(`${result.name}: ${result.memories.length} memory/memories`);
-        for (const m of result.memories) io.stdout(`  ${m.id}  ${m.kind}  ${m.summary}`);
-        if (result.related.length > 0) io.stdout(`Mentioned with: ${result.related.map((r) => `${r.name} (${r.together})`).join(", ")}`);
+        io.stdout(`${defuse(result.name)}: ${result.memories.length} memory/memories`);
+        for (const m of result.memories) io.stdout(`  ${m.id}  ${m.kind}  ${defuse(m.summary)}`);
+        if (result.related.length > 0) io.stdout(`Mentioned with: ${result.related.map((r) => `${defuse(r.name)} (${r.together})`).join(", ")}`);
         return 0;
       }
       case "shown":
@@ -980,7 +982,7 @@ export async function run(argv, io = defaultIo()) {
         if (!id) return usageError(io, "confirm needs an id, for example: stashpad confirm db-choice");
         const done = confirmMemory(dir, id);
         io.stdout(done.changed ? `Confirmed ${id} as still true today.` : `${id} was already confirmed today.`);
-        const again = reanchor(dir, id, projectRoot(dir, io.cwd));
+        const again = reanchor(dir, id, projectRoot(dir, io.cwd), io.env);
         if (again && (again.updated.length || again.dropped.length)) {
           io.stdout(`Re-anchored ${id} to the files as they are now${again.updated.length ? ` (updated: ${again.updated.join(", ")})` : ""}${again.dropped.length ? `; dropped, gone: ${again.dropped.join(", ")}` : ""}.`);
         }

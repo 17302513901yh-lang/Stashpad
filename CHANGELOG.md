@@ -17,11 +17,15 @@
 - **`stashpad decide "<choice>" --why "…" [--rejected "A, B"]`:** a decision memory with a fixed body layout (the choice, `Why:`, `Rejected:`, `Decided by:`). Recall and the brief show why it was chosen and what lost; a request that names a rejected option ("move it to SQLite") gets the decision, and a prompt that asks why (or about a decision, convention or policy) puts decisions first. `stashpad_save` takes optional `why` and `rejected` for decisions; the tool contract changed.
 - **`stashpad hooks off|on`:** pause the hooks for one project; the setting lives in `~/.stashpad` (or `$STASHPAD_CONFIG_DIR`), never in the repository. **`stashpad status-line`** prints `Stashpad · 42 memories · 3 to review · handoff open` for Claude Code's status bar (`stashpad setup claude-code --status-line` prints the setting). **`stashpad doctor`** says whether the hooks are wired (the Claude Code plugin, or hook entries in `.claude`, `.codex` or `.cursor` settings) and whether they are paused.
 - **`stashpad feedback --last`:** feedback on the memory the prompt hook gave last, without looking up its id; when it gave several, they are listed and you pick one.
+- **`stashpad import` keeps the first line of a file saved with a byte order mark** (UTF-8 BOM, also with CRLF endings) (#36, fixes #32).
+- **Claiming a handoff by id reports the right number of handoffs still open** (#38, fixes #33).
+- **Fixes from review:** secret checks no longer refuse ordinary settings (only names ending in KEY, TOKEN, SECRET, PASSWORD and the like count, values must look secret, matches are whole tokens) and a branch name never costs the automatic handoff; `search`, `list`, `about` and the anchor listings are defused; anchor checks from hooks read at most 50 MB, skip build and dependency folders, cache hashes and leave the move search to lint and `stashpad anchors`; a second open window is not an unclean end, and that note no longer expires the session-end handoff; anchors use a worktree's own files and are refused in the global store; paths in session files are trusted only under `~/.claude`/`~/.codex` and inside the project; `git status` runs without `GIT_*` variables (the docs now say filter drivers can still run); more harness tags are defused (`command-name`, `local-command-stdout`, `task-notification`, `thinking`, `function_calls` …); one unreadable or refused file no longer breaks a memory's anchors; the shown log is cut by bytes and forgets deleted ids.
 
 ### Thanks
 
 - @jay23606 for logging JSON search misses (#20), accent-insensitive search (#26), audit filters (#27), the Codex handoff (#28) and the Markdown export (#29).
-- @bfs2021 for the import `--format` fix (#21).
+- @bfs2021 for the import `--format` fix (#21) and the import BOM fix (#36).
+- @sunxiuguo for the handoff count fix and its careful tests (#38), a first contribution. Welcome!
 
 ## 0.3.0
 

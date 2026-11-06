@@ -2,10 +2,12 @@
 // fail the agent (errors go to standard error, the exit code stays 0) and stay small and fast.
 // Claude Code events: SessionStart (also after /compact), UserPromptSubmit, PreCompact, SessionEnd.
 // Other agents can call the same commands from their own hooks or scripts.
-import { existsSync, openSync, readSync, closeSync, statSync } from "node:fs";
-import { relative, isAbsolute } from "node:path";
+import { existsSync, openSync, readSync, closeSync, realpathSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, join, relative, isAbsolute, sep } from "node:path";
+import { gitRoot } from "./locate.mjs";
 import { buildBrief, DEFAULT_BRIEF_CHARS } from "./brief.mjs";
-import { createHandoff } from "./handoff.mjs";
+import { createHandoff, validBranch } from "./handoff.mjs";
 import { recall } from "./recall.mjs";
 import { readPins } from "./pins.mjs";
 import { fence, redactSecrets } from "./security.mjs";
@@ -149,28 +151,67 @@ export function handoffText(summary, reason, { git = null, unclean = null } = {}
     : [`Automatic note at ${reason}. It records what was going on; check the code and git status before acting on it.`];
   if (asks.length) parts.push(`Last requests: ${asks.map((a, i) => `(${i + 1}) ${clip(a, 220)}`).join(" ")}`);
   if (files.length) parts.push(`Files written: ${files.join(", ")}`);
-  if (git?.branch) parts.push(`Branch: ${mask(git.branch)}`);
+  const branch = git?.branch ? mask(git.branch) : null;
+  if (branch) parts.push(`Branch: ${branch}`);
   if (open.length) parts.push(`Uncommitted: ${open.slice(0, MAX_UNCOMMITTED).join(", ")}${open.length > MAX_UNCOMMITTED ? ` (+${open.length - MAX_UNCOMMITTED} more)` : ""}`);
   if (redacted) parts.push(`${redacted} secret(s) masked as [REDACTED].`);
-  return { text: parts.join("\n"), redacted, branch: git?.branch ?? null };
+  // The record keeps the branch only when it is a clean name; a masked one stays in the text only.
+  return { text: parts.join("\n"), redacted, branch: branch && validBranch(branch) ? branch : null };
 }
 
 // A session that wrote prompts but never reached the session end (crashed, killed, closed without
-// the hook): the next session start leaves an automatic handoff about it, once.
-function noteUncleanEnd(dir, input) {
+// the hook): the next session start leaves an automatic handoff about it, once. A session active in
+// the last UNCLEAN_AFTER_MS may simply be open in another window, so it does not count yet. The note
+// is added beside the other open auto handoffs, never in their place.
+export const UNCLEAN_AFTER_MS = 6 * 3600 * 1000;
+function noteUncleanEnd(dir, input, now = new Date()) {
   try {
     const me = sessionKey(input.session_id);
     if (!me) return;
-    const previous = listSessions(dir).find((s) => s.session !== me && (s.prompts ?? 0) > 0 && !s.ended_at && !s.unclean_noted);
+    const cutoff = now.getTime() - UNCLEAN_AFTER_MS;
+    const previous = listSessions(dir).find((s) => s.session !== me && (s.prompts ?? 0) > 0 && !s.ended_at && !s.unclean_noted && Date.parse(s.updated_at) <= cutoff);
     if (!previous) return;
-    updateSession(dir, previous.session, (s) => (s.unclean_noted = new Date().toISOString()));
-    const summary = typeof previous.transcript_path === "string" ? summarizeTranscript(previous.transcript_path, { cwd: previous.cwd ?? null }) : null;
-    const where = typeof previous.cwd === "string" && existsSync(previous.cwd) ? previous.cwd : null;
+    updateSession(dir, previous.session, (s) => (s.unclean_noted = now.toISOString()), now);
+    // The session file lives in the store, which may be committed: its paths are checked first.
+    const where = trustedCwd(dir, previous.cwd, input) ? previous.cwd : null;
+    const summary = trustedTranscript(previous.transcript_path, input) ? summarizeTranscript(previous.transcript_path, { cwd: where }) : null;
     const written = handoffText(summary, "an unclean end", { git: where ? gitStatus(where) : null, unclean: previous.updated_at });
-    createHandoff(dir, { text: written.text, origin: "auto", from: "hook", redacted: written.redacted, branch: written.branch });
+    createHandoff(dir, { text: written.text, origin: "auto", from: "hook", redacted: written.redacted, branch: written.branch, replaceAuto: false, now });
   } catch {
     // never break the session start
   }
+}
+
+function real(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
+}
+
+function inside(path, folder) {
+  return path !== null && folder !== null && (path === folder || path.startsWith(folder.endsWith(sep) ? folder : folder + sep));
+}
+
+// A transcript path from a session file is read only when it is an agent session file under the
+// user's own Claude Code or Codex folder, or next to the transcript this hook was given.
+export function trustedTranscript(path, input = {}, env = process.env) {
+  if (typeof path !== "string" || !isAbsolute(path) || path.length >= 1000 || !/\.jsonl$/i.test(path)) return false;
+  const folders = [join(homedir(), ".claude"), join(homedir(), ".codex"), env.CLAUDE_CONFIG_DIR, env.CODEX_HOME];
+  if (typeof input.transcript_path === "string" && isAbsolute(input.transcript_path)) folders.push(dirname(input.transcript_path));
+  const file = real(path);
+  return folders.some((f) => typeof f === "string" && isAbsolute(f) && inside(file, real(f)));
+}
+
+// A working folder from a session file is used only when it is inside this store's project.
+export function trustedCwd(dir, cwd, input = {}) {
+  if (typeof cwd !== "string" || !isAbsolute(cwd) || cwd.length >= 1000) return false;
+  const store = real(dir);
+  const project = store && basename(store) === "memories" && basename(dirname(store)) === ".stashpad"
+    ? dirname(dirname(store))
+    : typeof input.cwd === "string" && isAbsolute(input.cwd) ? gitRoot(input.cwd) ?? input.cwd : null;
+  return inside(real(cwd), project === null ? null : real(project));
 }
 
 // Where the session's transcript and working folder are, for noteUncleanEnd (local paths, kept in
@@ -206,14 +247,14 @@ function given(state, ids) {
 }
 
 // Returns the text to print (may be empty). Never throws.
-export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS, globalDir = null } = {}) {
+export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS, globalDir = null, now = new Date() } = {}) {
   const global = globalDir && resolve(globalDir) !== resolve(dir) && exists(globalDir) ? globalDir : null;
   const cwd = typeof input.cwd === "string" && isAbsolute(input.cwd) ? input.cwd : process.cwd();
   try {
     switch (event) {
       case "session-start": {
         // Compaction or /clear drops what the prompt hook gave earlier, so it may be given again.
-        if (input.source !== "compact") noteUncleanEnd(dir, input);
+        if (input.source !== "compact") noteUncleanEnd(dir, input, now);
         note(dir, input, (s) => {
           if (input.source === "compact" || input.source === "clear") s.given = [];
           s.source = typeof input.source === "string" ? input.source.slice(0, 20) : null;
@@ -225,14 +266,14 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
         const after = input.source === "compact" ? "Context was just compacted. Your Stashpad memory, again:\n" : "";
         // Stashpad's own line stays outside the data block; everything recalled goes inside it.
         if (!global) {
-          const brief = buildBrief(dir, { maxChars, cwd });
+          const brief = buildBrief(dir, { maxChars, cwd, anchorMoves: false });
           const out = after + fence(brief.text);
           logShown(dir, { event: "session-start", ids: brief.ids, chars: out.length, session: input.session_id });
           return out;
         }
         // Project first; the global store (true in every project) gets a third of the room.
-        const project = buildBrief(dir, { maxChars: Math.floor(maxChars * 0.67), cwd });
-        const wide = buildBrief(global, { maxChars: Math.floor(maxChars * 0.33), cwd });
+        const project = buildBrief(dir, { maxChars: Math.floor(maxChars * 0.67), cwd, anchorMoves: false });
+        const wide = buildBrief(global, { maxChars: Math.floor(maxChars * 0.33), cwd, checkFiles: false });
         const everywhere = wide.text.split("\n").slice(1).join("\n");
         const out = after + fence(`${project.text}\nGlobal store (all projects):\n${everywhere}`);
         logShown(dir, { event: "session-start", ids: project.ids, chars: out.length - everywhere.length, session: input.session_id });
@@ -241,7 +282,7 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
       }
       case "prompt": {
         // Memories this session already got from this hook are not pasted again.
-        const local = recall(dir, input.prompt ?? "", { exclude: [...readPins(dir), ...safeGiven(dir, input)], cwd });
+        const local = recall(dir, input.prompt ?? "", { exclude: [...readPins(dir), ...safeGiven(dir, input)], cwd, anchorMoves: false });
         note(dir, input, (s) => {
           given(s, local.hits);
           remember(s, input);
@@ -254,7 +295,7 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
           shown(dir, local, out.length);
           return out;
         }
-        const wide = recall(global, input.prompt ?? "", { exclude: [...readPins(global), ...safeGiven(global, input)], limit: Math.max(0, 3 - local.hits.length), cwd });
+        const wide = recall(global, input.prompt ?? "", { exclude: [...readPins(global), ...safeGiven(global, input)], limit: Math.max(0, 3 - local.hits.length), cwd, checkFiles: false });
         note(global, input, (s) => given(s, wide.hits));
         const extra = wide.text.split("\n").slice(2).join("\n");
         const out = !wide.text ? fence(local.text) : !local.text ? fence(wide.text.replace("Stashpad memories", "Stashpad global memories")) : fence(`${local.text}\n${extra}`);

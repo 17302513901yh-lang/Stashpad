@@ -33,14 +33,14 @@ function rank(entry) {
 }
 
 // Anchor state per memory id, for the memories that have anchors. Never throws.
-function anchorStates(dir, entries, cwd) {
+function anchorStates(dir, entries, cwd, moves) {
   const states = new Map();
   try {
     const anchors = readAnchors(dir);
     const ids = entries.map((e) => e.id).filter((id) => anchors[id]);
     if (ids.length === 0) return states;
     const root = projectRoot(dir, cwd);
-    const context = anchorContext(root);
+    const context = anchorContext(root, { moves });
     for (const id of ids) states.set(id, checkAnchors(dir, id, { root, anchors, context }));
   } catch {
     // a broken anchors file is reported by lint and doctor, not here
@@ -48,13 +48,15 @@ function anchorStates(dir, entries, cwd) {
   return states;
 }
 
-export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayIso(), cwd = process.cwd() } = {}) {
+// anchorMoves: false (the hooks) skips the search for moved files; lint and `stashpad anchors` do it.
+// checkFiles: false for the global store, whose memories have no project files.
+export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayIso(), cwd = process.cwd(), anchorMoves = true, checkFiles = true } = {}) {
   const { entries } = readEntries(dir);
   const current = entries.filter((entry) => isCurrent(entry.meta, today));
   const instructionFree = current.filter((entry) => !findInstructionLikeText(entry.body));
   const heldBack = current.length - instructionFree.length;
   // A memory whose anchored files are all gone is about code that no longer exists: skipped.
-  const anchored = anchorStates(dir, instructionFree, cwd);
+  const anchored = checkFiles ? anchorStates(dir, instructionFree, cwd, anchorMoves) : new Map();
   const safe = instructionFree.filter((entry) => !anchored.get(entry.id)?.gone);
   const filesGone = instructionFree.length - safe.length;
 

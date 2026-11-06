@@ -9,7 +9,8 @@ import { handleMessage } from "../src/mcp.mjs";
 import { buildBrief } from "../src/brief.mjs";
 import { lint } from "../src/feedback.mjs";
 import { recall } from "../src/recall.mjs";
-import { blobHash, checkAnchors, cleanPath, locate, projectRoot, readAnchors, readAnchorsFile } from "../src/anchors.mjs";
+import { anchorContext, blobHash, checkAnchors, cleanPath, locate, projectRoot, readAnchors, readAnchorsFile } from "../src/anchors.mjs";
+import { existsSync } from "node:fs";
 import { acceptPending, readMemory, rejectPending } from "../src/store.mjs";
 
 // A project folder with its store in .stashpad/memories, so paths are relative to the project.
@@ -154,4 +155,92 @@ test("anchor, unanchor and a tampered anchors file", async () => {
   assert.deepEqual(Object.keys(readAnchors(dir)["tax-rules"]), ["src/billing/tax.ts"]);
   assert.equal((await cli(root, "unanchor", "tax-rules")).code, 0);
   assert.equal(readAnchors(dir)["tax-rules"], undefined);
+});
+
+test("checks read a bounded number of bytes, cache hashes, and skip build folders when looking for moves", async () => {
+  const { root, dir } = project();
+  await cli(root, "save", "tax", "--kind", "fact", "--source-type", "user", "--source-ref", "t", "--text", "VAT rules for invoices live in the tax module.", "--files", "src/billing/tax.ts");
+  assert.equal(readAnchorsFile(dir).sizes.tax["src/billing/tax.ts"], "export const VAT = 21;\n".length, "the size is stored with the anchor");
+  // Nothing may be read: the file is reported as not checked instead of read anyway.
+  const capped = checkAnchors(dir, "tax", { root, context: anchorContext(root, { maxBytes: 0 }) });
+  assert.equal(capped.files[0].state, "refused");
+  assert.match(capped.files[0].reason, /not checked: more than 50 MB/);
+  // A normal check fills the hash cache; after that an unchanged file needs no read at all.
+  assert.equal(checkAnchors(dir, "tax", { root }).files[0].state, "same");
+  assert.ok(existsSync(join(dir, ".sessions", "anchor-hashes.json")));
+  const cached = anchorContext(root, { maxBytes: 0 });
+  assert.equal(checkAnchors(dir, "tax", { root, context: cached }).files[0].state, "same");
+  assert.equal(cached.bytesRead, 0);
+  // Moved under a different name, the same content is found by size; inside dist/ it is not looked for.
+  mkdirSync(join(root, "lib"));
+  renameSync(join(root, "src", "billing", "tax.ts"), join(root, "lib", "vat.ts"));
+  assert.deepEqual(checkAnchors(dir, "tax", { root }).files[0], { path: "src/billing/tax.ts", state: "moved", to: "lib/vat.ts" });
+  mkdirSync(join(root, "dist"));
+  renameSync(join(root, "lib", "vat.ts"), join(root, "dist", "tax.ts"));
+  assert.equal(checkAnchors(dir, "tax", { root }).files[0].state, "gone");
+});
+
+test("the hooks do not look for moved files: a missing file is named, the memory is not hidden", async () => {
+  const { root, dir } = project();
+  await cli(root, "save", "rates", "--kind", "fact", "--source-type", "user", "--source-ref", "t", "--text", "Exchange rates for invoices come from the rates module.", "--files", "src/billing/rates.ts");
+  rmSync(join(root, "src", "billing", "rates.ts"));
+  const quick = recall(dir, "exchange rates invoices", { cwd: root, anchorMoves: false });
+  assert.equal(quick.hits.length, 1);
+  assert.match(quick.text, /missing here \(run stashpad anchors to look for a move\): src\/billing\/rates\.ts/);
+  assert.equal(recall(dir, "exchange rates invoices", { cwd: root }).hits.length, 0, "a full check still finds it gone");
+});
+
+test("a read error during the move search does not lose the other anchor states; confirm drops what it cannot anchor", async () => {
+  const { root, dir } = project();
+  await cli(root, "save", "billing", "--kind", "fact", "--source-type", "user", "--source-ref", "t", "--text", "Billing uses the tax and rates modules together.", "--files", "src/billing/tax.ts,src/billing/rates.ts");
+  mkdirSync(join(root, "lib"));
+  renameSync(join(root, "src", "billing", "rates.ts"), join(root, "lib", "rates.ts"));
+  const context = anchorContext(root);
+  const real = context.fileHash;
+  context.fileHash = (abs) => {
+    if (abs.endsWith("rates.ts")) throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+    return real(abs);
+  };
+  const status = checkAnchors(dir, "billing", { root, context });
+  assert.deepEqual(status.files.map((f) => f.state), ["same", "moved-changed"]);
+
+  // Same content under a name a stored path may not have (":" cannot be in a Windows file name at all).
+  if (process.platform === "win32") return;
+  renameSync(join(root, "lib", "rates.ts"), join(root, "lib", "rat:es.txt"));
+  assert.equal(checkAnchors(dir, "billing", { root }).files[1].state, "gone");
+  const confirmed = await cli(root, "confirm", "billing");
+  assert.equal(confirmed.code, 0, confirmed.err);
+  assert.deepEqual(Object.keys(readAnchors(dir).billing), ["src/billing/tax.ts"]);
+});
+
+test("in a git worktree the worktree's own files count, also with the store in the main checkout", () => {
+  const { root: main, dir } = project();
+  mkdirSync(join(main, ".git", "worktrees", "feature"), { recursive: true });
+  const tree = mkdtempSync(join(tmpdir(), "stashpad-worktree-"));
+  writeFileSync(join(tree, ".git"), `gitdir: ${join(main, ".git", "worktrees", "feature")}\n`);
+  mkdirSync(join(tree, "src"));
+  assert.equal(projectRoot(dir, join(tree, "src")), tree);
+  assert.equal(projectRoot(dir, main), main);
+  assert.equal(projectRoot(join(tree, "elsewhere"), join(tree, "src")), tree, "a store outside the project uses the worktree too");
+});
+
+test("global-store memories cannot be anchored; old anchors there are not reported as gone", async () => {
+  const { root } = project();
+  const global = mkdtempSync(join(tmpdir(), "stashpad-global-"));
+  const h = harness(root);
+  h.io.env = { STASHPAD_GLOBAL_DIR: global };
+  const code = await run(["save", "g", "--global", "--kind", "fact", "--source-type", "user", "--source-ref", "t", "--text", "Tabs are never used in any of my projects.", "--files", "src/billing/tax.ts"], h.io);
+  assert.equal(code, 1);
+  assert.match(h.err.join("\n"), /global store cannot be anchored to files/);
+  assert.equal(existsSync(join(global, "g.md")), false, "nothing is saved");
+  writeFileSync(join(global, "anchors.json"), JSON.stringify({ anchors: { g: { "src/gone.ts": "0".repeat(40) } }, requested: {} }));
+  assert.equal(checkAnchors(global, "g", { root, env: { STASHPAD_GLOBAL_DIR: global } }), null);
+  process.env.STASHPAD_GLOBAL_DIR = global;
+  try {
+    const reply = mcp(global, "stashpad_save", { id: "g2", kind: "fact", text: "Tabs are never used in any project here.", source_ref: "t", files: ["src/billing/tax.ts"] });
+    assert.equal(reply.isError, true);
+    assert.match(reply.content[0].text, /global store cannot be anchored to files/);
+  } finally {
+    delete process.env.STASHPAD_GLOBAL_DIR;
+  }
 });
