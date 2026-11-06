@@ -189,3 +189,26 @@ test("the hooks do not look for moved files: a missing file is named, the memory
   assert.match(quick.text, /missing here \(run stashpad anchors to look for a move\): src\/billing\/rates\.ts/);
   assert.equal(recall(dir, "exchange rates invoices", { cwd: root }).hits.length, 0, "a full check still finds it gone");
 });
+
+test("a read error during the move search does not lose the other anchor states; confirm drops what it cannot anchor", async () => {
+  const { root, dir } = project();
+  await cli(root, "save", "billing", "--kind", "fact", "--source-type", "user", "--source-ref", "t", "--text", "Billing uses the tax and rates modules together.", "--files", "src/billing/tax.ts,src/billing/rates.ts");
+  mkdirSync(join(root, "lib"));
+  renameSync(join(root, "src", "billing", "rates.ts"), join(root, "lib", "rates.ts"));
+  const context = anchorContext(root);
+  const real = context.fileHash;
+  context.fileHash = (abs) => {
+    if (abs.endsWith("rates.ts")) throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+    return real(abs);
+  };
+  const status = checkAnchors(dir, "billing", { root, context });
+  assert.deepEqual(status.files.map((f) => f.state), ["same", "moved-changed"]);
+
+  // Same content under a name a stored path may not have (":" cannot be in a Windows file name at all).
+  if (process.platform === "win32") return;
+  renameSync(join(root, "lib", "rates.ts"), join(root, "lib", "rat:es.txt"));
+  assert.equal(checkAnchors(dir, "billing", { root }).files[1].state, "gone");
+  const confirmed = await cli(root, "confirm", "billing");
+  assert.equal(confirmed.code, 0, confirmed.err);
+  assert.deepEqual(Object.keys(readAnchors(dir).billing), ["src/billing/tax.ts"]);
+});

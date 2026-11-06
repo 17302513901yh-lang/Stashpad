@@ -564,11 +564,17 @@ export function reanchor(dir, id, root = projectRoot(dir)) {
     const dropped = [];
     for (const f of status.files) {
       const path = f.to ?? f.path;
-      if (f.state === "gone" || f.state === "refused") {
+      if (f.state === "gone" || f.state === "refused" || f.state === "missing") {
         dropped.push(f.path);
         continue;
       }
-      Object.assign(next, hashPaths(root, [path]));
+      // One file that cannot be anchored (a name cleanPath refuses, unreadable, too large) is
+      // dropped; it never costs the memory its other anchors.
+      try {
+        Object.assign(next, hashPaths(root, [path]));
+      } catch {
+        dropped.push(f.path);
+      }
     }
     setAnchors(dir, id, next);
     return { id, files: Object.keys(next), dropped, updated: status.files.filter((f) => f.state !== "same" && f.state !== "gone" && f.state !== "refused").map((f) => f.path) };
