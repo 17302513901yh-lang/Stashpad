@@ -197,7 +197,11 @@ export function redactSecrets(text) {
 // Tag names an agent app or model uses for its own text, plus Stashpad's own fence. Text inside a
 // memory or handoff that opens or closes one of these could pass for harness text, so recalled text
 // never carries them as real tags.
-const TAG_NAMES = String.raw`(?:system[\w:.-]*|tool[\w:.-]*|function[\w:.-]*|stashpad[\w:.-]*|antml[\w:.-]*|user|assistant|human|developer|instructions?|important)`;
+// Claude Code and other harnesses also wrap their own text in tags such as <command-name>,
+// <local-command-stdout>, <user-prompt-submit-hook>, <task-notification>, <bash-stdout> and
+// <thinking>; tool calls use <function_calls>, <invoke> and <parameter>. All of these are covered,
+// in any letter case.
+const TAG_NAMES = String.raw`(?:system[\w:.-]*|tool[\w:.-]*|function[\w:.-]*|stashpad[\w:.-]*|antml[\w:.-]*|command-[\w:.-]+|local-command-[\w:.-]+|bash-[\w:.-]+|[\w-]+-hook|task-notification|thinking|redacted_thinking|documents?|document_content|invoke|parameters?|search_results?|user|assistant|human|developer|instructions?|important)`;
 const FAKE_TAG = new RegExp(String.raw`<(?=\s*\/?\s*${TAG_NAMES}(?:[\s/>]|$))`, "giu");
 const FAKE_TAG_TEST = new RegExp(String.raw`<\s*\/?\s*${TAG_NAMES}(?:[\s/>]|$)`, "iu");
 // Control characters other than tab and newline.
