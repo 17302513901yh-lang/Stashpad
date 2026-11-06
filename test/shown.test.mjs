@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "../src/cli.mjs";
@@ -8,7 +8,7 @@ import { lint } from "../src/feedback.mjs";
 import { runHook } from "../src/hooks.mjs";
 import { handleMessage } from "../src/mcp.mjs";
 import { sessionsDir } from "../src/sessions.mjs";
-import { lastShown, logShown, readShown } from "../src/shown.mjs";
+import { MAX_SHOWN_BYTES, lastShown, logShown, newestLines, readShown } from "../src/shown.mjs";
 import { acceptPending, saveMemory } from "../src/store.mjs";
 
 const fresh = () => join(mkdtempSync(join(tmpdir(), "stashpad-shown-")), "s");
@@ -88,4 +88,32 @@ test("the log is sealed with an encrypted store", async () => {
   } finally {
     delete process.env.STASHPAD_PASSPHRASE;
   }
+});
+
+test("the log is cut by bytes, keeping whole newest lines", () => {
+  const dir = fresh();
+  put(dir, "db", "The project database is Postgres 16 running in Docker.");
+  // Few but long lines: a cut by line count would leave the file over the limit.
+  const long = JSON.stringify({ at: "2026-01-01T00:00:00.000Z", session: null, event: "x".repeat(40), ids: Array.from({ length: 100 }, (_, i) => `memory-with-a-long-id-${i}`), chars: 1 });
+  logShown(dir, { event: "first", ids: ["db"] });
+  writeFileSync(join(sessionsDir(dir), "shown.jsonl"), `${Array(80).fill(long).join("\n")}\n`);
+  logShown(dir, { event: "newest", ids: ["db"] });
+  const size = statSync(join(sessionsDir(dir), "shown.jsonl")).size;
+  assert.ok(size <= MAX_SHOWN_BYTES / 2, `${size} bytes`);
+  assert.equal(readShown(dir).at(-1).event, "newest");
+  assert.equal(newestLines("a\nbb\nccc\n", 7), "bb\nccc\n");
+  assert.equal(newestLines("toolong\n", 3), "");
+});
+
+test("last-shown.json drops ids whose memory was deleted", () => {
+  const dir = fresh();
+  put(dir, "db", "The project database is Postgres 16 running in Docker.");
+  put(dir, "old", "The old queue used Redis lists for background jobs.");
+  logShown(dir, { event: "x", ids: ["db", "old"], now: new Date("2026-03-01T10:00:00Z") });
+  rmSync(join(dir, "old.md"));
+  logShown(dir, { event: "x", ids: ["db"], now: new Date("2026-03-02T10:00:00Z") });
+  const summary = lastShown(dir);
+  assert.deepEqual(Object.keys(summary.last), ["db"]);
+  assert.deepEqual(Object.keys(summary.count), ["db"]);
+  assert.equal(summary.since, "2026-03-01");
 });
