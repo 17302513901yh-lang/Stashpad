@@ -212,3 +212,35 @@ test("a read error during the move search does not lose the other anchor states;
   assert.equal(confirmed.code, 0, confirmed.err);
   assert.deepEqual(Object.keys(readAnchors(dir).billing), ["src/billing/tax.ts"]);
 });
+
+test("in a git worktree the worktree's own files count, also with the store in the main checkout", () => {
+  const { root: main, dir } = project();
+  mkdirSync(join(main, ".git", "worktrees", "feature"), { recursive: true });
+  const tree = mkdtempSync(join(tmpdir(), "stashpad-worktree-"));
+  writeFileSync(join(tree, ".git"), `gitdir: ${join(main, ".git", "worktrees", "feature")}\n`);
+  mkdirSync(join(tree, "src"));
+  assert.equal(projectRoot(dir, join(tree, "src")), tree);
+  assert.equal(projectRoot(dir, main), main);
+  assert.equal(projectRoot(join(tree, "elsewhere"), join(tree, "src")), tree, "a store outside the project uses the worktree too");
+});
+
+test("global-store memories cannot be anchored; old anchors there are not reported as gone", async () => {
+  const { root } = project();
+  const global = mkdtempSync(join(tmpdir(), "stashpad-global-"));
+  const h = harness(root);
+  h.io.env = { STASHPAD_GLOBAL_DIR: global };
+  const code = await run(["save", "g", "--global", "--kind", "fact", "--source-type", "user", "--source-ref", "t", "--text", "Tabs are never used in any of my projects.", "--files", "src/billing/tax.ts"], h.io);
+  assert.equal(code, 1);
+  assert.match(h.err.join("\n"), /global store cannot be anchored to files/);
+  assert.equal(existsSync(join(global, "g.md")), false, "nothing is saved");
+  writeFileSync(join(global, "anchors.json"), JSON.stringify({ anchors: { g: { "src/gone.ts": "0".repeat(40) } }, requested: {} }));
+  assert.equal(checkAnchors(global, "g", { root, env: { STASHPAD_GLOBAL_DIR: global } }), null);
+  process.env.STASHPAD_GLOBAL_DIR = global;
+  try {
+    const reply = mcp(global, "stashpad_save", { id: "g2", kind: "fact", text: "Tabs are never used in any project here.", source_ref: "t", files: ["src/billing/tax.ts"] });
+    assert.equal(reply.isError, true);
+    assert.match(reply.content[0].text, /global store cannot be anchored to files/);
+  } finally {
+    delete process.env.STASHPAD_GLOBAL_DIR;
+  }
+});

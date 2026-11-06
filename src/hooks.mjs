@@ -234,7 +234,7 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
         }
         // Project first; the global store (true in every project) gets a third of the room.
         const project = buildBrief(dir, { maxChars: Math.floor(maxChars * 0.67), cwd, anchorMoves: false });
-        const wide = buildBrief(global, { maxChars: Math.floor(maxChars * 0.33), cwd, anchorMoves: false });
+        const wide = buildBrief(global, { maxChars: Math.floor(maxChars * 0.33), cwd, checkFiles: false });
         const everywhere = wide.text.split("\n").slice(1).join("\n");
         const out = after + fence(`${project.text}\nGlobal store (all projects):\n${everywhere}`);
         logShown(dir, { event: "session-start", ids: project.ids, chars: out.length - everywhere.length, session: input.session_id });
@@ -256,7 +256,7 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
           shown(dir, local, out.length);
           return out;
         }
-        const wide = recall(global, input.prompt ?? "", { exclude: [...readPins(global), ...safeGiven(global, input)], limit: Math.max(0, 3 - local.hits.length), cwd, anchorMoves: false });
+        const wide = recall(global, input.prompt ?? "", { exclude: [...readPins(global), ...safeGiven(global, input)], limit: Math.max(0, 3 - local.hits.length), cwd, checkFiles: false });
         note(global, input, (s) => given(s, wide.hits));
         const extra = wide.text.split("\n").slice(2).join("\n");
         const out = !wide.text ? fence(local.text) : !local.text ? fence(wide.text.replace("Stashpad memories", "Stashpad global memories")) : fence(`${local.text}\n${extra}`);

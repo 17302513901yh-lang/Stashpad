@@ -26,7 +26,7 @@ import { createHash } from "node:crypto";
 import { StoreError } from "./errors.mjs";
 import { writeAtomic } from "./fsx.mjs";
 import { withStoreLock } from "./lock.mjs";
-import { gitRoot } from "./locate.mjs";
+import { gitRoot, globalStore, worktreeRoot } from "./locate.mjs";
 import { prepareForWrite } from "./safety.mjs";
 import { ensureSessionsDir, sessionsDir } from "./sessions.mjs";
 import { keyFor, openText, sealFor } from "./vault.mjs";
@@ -42,12 +42,33 @@ const MAX_CACHE_ENTRIES = 5000;
 const SKIP = new Set([".git", "node_modules", ".stashpad", ".snapshots", "dist", "build", "target", "out", "coverage", ".venv", "venv", "__pycache__", ".godot", ".import", ".next", ".nuxt", ".svelte-kit", ".turbo", ".cache", ".gradle", ".tox", ".mypy_cache", ".pytest_cache", "bower_components", "obj"]);
 const DEVICE = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
 
-// The folder anchored paths are relative to: the folder that holds .stashpad/memories, else the git
-// root of the current folder, else the current folder.
+const samePath = (a, b) => a !== null && b !== null && realRoot(a) === realRoot(b);
+
+// The folder anchored paths are relative to: the folder that holds .stashpad/memories, else the top
+// of the current checkout, else the current folder. In a git worktree the worktree's own files count,
+// also when the store sits in the main checkout (all worktrees share it).
 export function projectRoot(dir, cwd = process.cwd()) {
   const store = resolve(dir);
-  if (basename(store) === "memories" && basename(dirname(store)) === ".stashpad") return dirname(dirname(store));
-  return gitRoot(cwd) ?? resolve(cwd);
+  const own = worktreeRoot(cwd);
+  if (basename(store) === "memories" && basename(dirname(store)) === ".stashpad") {
+    const home = dirname(dirname(store));
+    if (own && !samePath(own, home) && samePath(gitRoot(cwd), home)) return own;
+    return home;
+  }
+  return own ?? resolve(cwd);
+}
+
+// The global store holds what is true in every project, so its memories have no project files.
+export function isGlobalStore(dir, env = process.env) {
+  try {
+    return samePath(resolve(dir), globalStore(env));
+  } catch {
+    return false;
+  }
+}
+
+export function refuseGlobalAnchors(dir, env = process.env) {
+  if (isGlobalStore(dir, env)) throw new StoreError("memories in the global store cannot be anchored to files: it holds what is true in every project, and files belong to one. Save the memory in the project store (without --global) to anchor it.");
 }
 
 // A clean project-relative path with forward slashes ("src/db.ts", or "docs/" for a folder), or null.
@@ -299,7 +320,8 @@ export function setAnchors(dir, id, hashes) {
 }
 
 // Adds files to a memory's anchors (keeps the ones it has).
-export function addAnchors(dir, id, root, paths) {
+export function addAnchors(dir, id, root, paths, env = process.env) {
+  refuseGlobalAnchors(dir, env);
   return withStoreLock(dir, () => {
     const current = readAnchorsFile(dir).anchors[id] ?? {};
     const added = hashPaths(root, paths);
@@ -322,9 +344,10 @@ export function removeAnchors(dir, id, paths = null) {
 
 // An agent asks for paths with a queued memory. Only the paths are kept; nothing is read until a
 // person accepts the memory.
-export function requestAnchors(dir, id, paths) {
+export function requestAnchors(dir, id, paths, env = process.env) {
   const clean = checkRequested(paths);
   if (clean.length === 0) return [];
+  refuseGlobalAnchors(dir, env);
   return withStoreLock(dir, () => {
     keyFor(dir);
     prepareForWrite(dir);
@@ -503,9 +526,10 @@ function findMove(context, path, hash, size) {
 
 // The state of each anchored path: same, changed, moved (same content elsewhere), moved-changed (the
 // only file with that name elsewhere, other content), gone, missing (not looked for: hooks), or refused.
-export function checkAnchors(dir, id, { root = projectRoot(dir), anchors = readAnchors(dir), sizes = null, context = anchorContext(root) } = {}) {
+export function checkAnchors(dir, id, { root = projectRoot(dir), anchors = readAnchors(dir), sizes = null, context = anchorContext(root), env = process.env } = {}) {
   const files = anchors[id];
-  if (!files) return null;
+  // A global memory is never checked against whichever project is open (it would look gone).
+  if (!files || isGlobalStore(dir, env)) return null;
   context.attach?.(dir);
   if (!sizes && context.sizesOf !== dir) {
     context.sizes = readAnchorSizes(dir);
@@ -556,9 +580,9 @@ export function anchorNote(status) {
 
 // A person confirmed the memory: anchor it to the files as they are now, following moves; gone files
 // are dropped. Returns what changed.
-export function reanchor(dir, id, root = projectRoot(dir)) {
+export function reanchor(dir, id, root = projectRoot(dir), env = process.env) {
   return withStoreLock(dir, () => {
-    const status = checkAnchors(dir, id, { root, anchors: readAnchorsFile(dir).anchors });
+    const status = checkAnchors(dir, id, { root, anchors: readAnchorsFile(dir).anchors, env });
     if (!status) return null;
     const next = {};
     const dropped = [];

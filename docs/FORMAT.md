@@ -80,8 +80,9 @@ changed. The memory file does not change: anchors live next to the memories in `
 }
 ```
 
-- **Paths** are relative to the project: the folder that holds `.stashpad/memories` (else the git root of the current
-  folder). A folder ends in `/`. At most 20 per memory.
+- **Paths** are relative to the project: the folder that holds `.stashpad/memories` (else the top of the current
+  checkout). In a git worktree they are relative to the worktree itself, also when the store sits in the main checkout.
+  A folder ends in `/`. At most 20 per memory. Memories in the global store cannot be anchored.
 - **Hashes** are git blob ids over LF line endings (so a Windows and a Linux checkout agree, with or without git). A
   folder's hash covers the sorted list of its files and their hashes, so an added file counts too (at most 2000 files;
   links, `.git`, `node_modules` and build or cache folders such as `dist`, `build`, `target`, `.venv` and `.godot` are

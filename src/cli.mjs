@@ -57,7 +57,7 @@ import { decisionBody, decisionId } from "./decisions.mjs";
 import { hooksPaused, setHooksPaused } from "./hookswitch.mjs";
 import { statusLine } from "./statusline.mjs";
 import { clearShown, logShown, shownReport } from "./shown.mjs";
-import { addAnchors, checkAnchors, checkRequested, hashPaths, pathFromUser, projectRoot, readAnchorsFile, reanchor, removeAnchors, requestAnchors, requestedFor, setAnchors } from "./anchors.mjs";
+import { addAnchors, checkAnchors, checkRequested, hashPaths, pathFromUser, projectRoot, readAnchorsFile, reanchor, refuseGlobalAnchors, removeAnchors, requestAnchors, requestedFor, setAnchors } from "./anchors.mjs";
 export const USAGE = `Usage:
   stashpad save <id> --kind <fact|preference|decision|task> --source-type <user|agent|tool|web> --source-ref "<where it came from>" --text "<the memory>" [--valid-from YYYY-MM-DD] [--expires YYYY-MM-DD] [--supersedes <old-id>] [--files a,b]
   stashpad decide "<choice>" --why "<reason>" [--rejected "A, B"] [--by <who>] [--id <id>] [--source-ref "<where>"] [--supersedes <old-id>] [--files a,b]
@@ -225,6 +225,7 @@ async function cmdSave(io, dir, id, values) {
   const content = values.text === "-" ? await io.readStdin() : values.text;
   // Files are checked before anything is saved; a person's own save is anchored right away.
   const root = projectRoot(dir, io.cwd);
+  if (csv(values.files)?.length) refuseGlobalAnchors(dir, io.env);
   const files = csv(values.files)?.map((p) => pathFromUser(root, io.cwd, p)) ?? [];
   const hashes = files.length && values["source-type"] === "user" ? hashPaths(root, files) : null;
   if (files.length && !hashes) checkRequested(files);
@@ -244,7 +245,7 @@ async function cmdSave(io, dir, id, values) {
     supersedes: values.supersedes ?? null,
   });
   if (hashes) setAnchors(dir, id, hashes);
-  else if (files.length) requestAnchors(dir, id, files);
+  else if (files.length) requestAnchors(dir, id, files, io.env);
 
   if (values.json) {
     io.stdout(JSON.stringify({ status: result.status, id, path: result.path, maybe_replaces: result.maybe_replaces }));
@@ -308,7 +309,7 @@ function cmdAccept(io, dir, id) {
     io.stdout(`Ended ${id.slice("forget-".length)}. It stays in the store with its end date.`);
   } else {
     io.stdout(`Accepted ${id} into the store: ${path}`);
-    const status = checkAnchors(dir, id);
+    const status = checkAnchors(dir, id, { root: projectRoot(dir, io.cwd), env: io.env });
     if (status) io.stdout(`Anchored to: ${status.files.map((f) => f.path).join(", ")}`);
   }
   return 0;
@@ -418,7 +419,7 @@ function cmdGet(io, dir, id, values) {
   const flagged = findInstructionLikeText(body);
   let anchored = null;
   try {
-    anchored = checkAnchors(dir, id, { root: projectRoot(dir, io.cwd) });
+    anchored = checkAnchors(dir, id, { root: projectRoot(dir, io.cwd), env: io.env });
   } catch {
     anchored = null;
   }
@@ -747,7 +748,8 @@ function cmdAnchors(io, dir, command, [id, ...paths], values) {
     if (!id || paths.length === 0) return usageError(io, "anchor needs an id and at least one path, for example: stashpad anchor tax-rules src/billing/tax.ts");
     const { meta } = parseMemory(readMemory(dir, id).text);
     if (!isCurrent(meta)) return usageError(io, `"${id}" is not current; only a current memory can be anchored.`);
-    const done = addAnchors(dir, id, root, paths.map((p) => pathFromUser(root, io.cwd, p)));
+    refuseGlobalAnchors(dir, io.env);
+    const done = addAnchors(dir, id, root, paths.map((p) => pathFromUser(root, io.cwd, p)), io.env);
     io.stdout(values.json ? JSON.stringify(done) : `Anchored ${id} to: ${done.files.join(", ")}. Recall, the brief and lint now say when these change.`);
     return 0;
   }
@@ -758,7 +760,7 @@ function cmdAnchors(io, dir, command, [id, ...paths], values) {
     return 0;
   }
   const { anchors } = readAnchorsFile(dir);
-  const rows = Object.keys(anchors).sort().map((mid) => checkAnchors(dir, mid, { root, anchors })).filter((r) => !values.changed || r.changed);
+  const rows = Object.keys(anchors).sort().map((mid) => checkAnchors(dir, mid, { root, anchors, env: io.env })).filter((r) => r && (!values.changed || r.changed));
   if (values.json) {
     io.stdout(JSON.stringify(defuseValues({ root, anchors: rows })));
     return 0;
@@ -980,7 +982,7 @@ export async function run(argv, io = defaultIo()) {
         if (!id) return usageError(io, "confirm needs an id, for example: stashpad confirm db-choice");
         const done = confirmMemory(dir, id);
         io.stdout(done.changed ? `Confirmed ${id} as still true today.` : `${id} was already confirmed today.`);
-        const again = reanchor(dir, id, projectRoot(dir, io.cwd));
+        const again = reanchor(dir, id, projectRoot(dir, io.cwd), io.env);
         if (again && (again.updated.length || again.dropped.length)) {
           io.stdout(`Re-anchored ${id} to the files as they are now${again.updated.length ? ` (updated: ${again.updated.join(", ")})` : ""}${again.dropped.length ? `; dropped, gone: ${again.dropped.join(", ")}` : ""}.`);
         }

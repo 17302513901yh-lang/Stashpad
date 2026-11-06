@@ -49,13 +49,14 @@ function anchorStates(dir, entries, cwd, moves) {
 }
 
 // anchorMoves: false (the hooks) skips the search for moved files; lint and `stashpad anchors` do it.
-export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayIso(), cwd = process.cwd(), anchorMoves = true } = {}) {
+// checkFiles: false for the global store, whose memories have no project files.
+export function buildBrief(dir, { maxChars = DEFAULT_BRIEF_CHARS, today = todayIso(), cwd = process.cwd(), anchorMoves = true, checkFiles = true } = {}) {
   const { entries } = readEntries(dir);
   const current = entries.filter((entry) => isCurrent(entry.meta, today));
   const instructionFree = current.filter((entry) => !findInstructionLikeText(entry.body));
   const heldBack = current.length - instructionFree.length;
   // A memory whose anchored files are all gone is about code that no longer exists: skipped.
-  const anchored = anchorStates(dir, instructionFree, cwd, anchorMoves);
+  const anchored = checkFiles ? anchorStates(dir, instructionFree, cwd, anchorMoves) : new Map();
   const safe = instructionFree.filter((entry) => !anchored.get(entry.id)?.gone);
   const filesGone = instructionFree.length - safe.length;
 
