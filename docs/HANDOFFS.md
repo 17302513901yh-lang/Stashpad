@@ -31,7 +31,9 @@ files written, the git branch and the files that are not committed yet (up to 10
 reaches its end (it crashed, was killed, or the window was closed before the hook ran), the next session start leaves
 a note that says so, built from that session's transcript, so the work is treated as unfinished. A session that was
 active in the last 6 hours does not count yet (it may just be open in another window). The note is written once per
-such session and is added beside the other open `auto` handoffs; it never expires them.
+such session and is added beside the other open `auto` handoffs; it never expires them. The transcript and folder named in a session file
+are used only when the transcript lies under `~/.claude` or `~/.codex` (or next to the transcript the hook was given)
+and the folder is inside the project, because the store, and so the session file, may be committed.
 
 `git status` runs with the repository's `core.fsmonitor` switched off (a repository's config cannot make Stashpad
 start a program), without taking the index lock, from an absolute path to git, and with a 2 second limit; without git

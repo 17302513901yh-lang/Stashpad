@@ -2,8 +2,10 @@
 // fail the agent (errors go to standard error, the exit code stays 0) and stay small and fast.
 // Claude Code events: SessionStart (also after /compact), UserPromptSubmit, PreCompact, SessionEnd.
 // Other agents can call the same commands from their own hooks or scripts.
-import { existsSync, openSync, readSync, closeSync, statSync } from "node:fs";
-import { relative, isAbsolute } from "node:path";
+import { existsSync, openSync, readSync, closeSync, realpathSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, join, relative, isAbsolute, sep } from "node:path";
+import { gitRoot } from "./locate.mjs";
 import { buildBrief, DEFAULT_BRIEF_CHARS } from "./brief.mjs";
 import { createHandoff, validBranch } from "./handoff.mjs";
 import { recall } from "./recall.mjs";
@@ -170,13 +172,46 @@ function noteUncleanEnd(dir, input, now = new Date()) {
     const previous = listSessions(dir).find((s) => s.session !== me && (s.prompts ?? 0) > 0 && !s.ended_at && !s.unclean_noted && Date.parse(s.updated_at) <= cutoff);
     if (!previous) return;
     updateSession(dir, previous.session, (s) => (s.unclean_noted = now.toISOString()), now);
-    const summary = typeof previous.transcript_path === "string" ? summarizeTranscript(previous.transcript_path, { cwd: previous.cwd ?? null }) : null;
-    const where = typeof previous.cwd === "string" && existsSync(previous.cwd) ? previous.cwd : null;
+    // The session file lives in the store, which may be committed: its paths are checked first.
+    const where = trustedCwd(dir, previous.cwd, input) ? previous.cwd : null;
+    const summary = trustedTranscript(previous.transcript_path, input) ? summarizeTranscript(previous.transcript_path, { cwd: where }) : null;
     const written = handoffText(summary, "an unclean end", { git: where ? gitStatus(where) : null, unclean: previous.updated_at });
     createHandoff(dir, { text: written.text, origin: "auto", from: "hook", redacted: written.redacted, branch: written.branch, replaceAuto: false, now });
   } catch {
     // never break the session start
   }
+}
+
+function real(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
+}
+
+function inside(path, folder) {
+  return path !== null && folder !== null && (path === folder || path.startsWith(folder.endsWith(sep) ? folder : folder + sep));
+}
+
+// A transcript path from a session file is read only when it is an agent session file under the
+// user's own Claude Code or Codex folder, or next to the transcript this hook was given.
+export function trustedTranscript(path, input = {}, env = process.env) {
+  if (typeof path !== "string" || !isAbsolute(path) || path.length >= 1000 || !/\.jsonl$/i.test(path)) return false;
+  const folders = [join(homedir(), ".claude"), join(homedir(), ".codex"), env.CLAUDE_CONFIG_DIR, env.CODEX_HOME];
+  if (typeof input.transcript_path === "string" && isAbsolute(input.transcript_path)) folders.push(dirname(input.transcript_path));
+  const file = real(path);
+  return folders.some((f) => typeof f === "string" && isAbsolute(f) && inside(file, real(f)));
+}
+
+// A working folder from a session file is used only when it is inside this store's project.
+export function trustedCwd(dir, cwd, input = {}) {
+  if (typeof cwd !== "string" || !isAbsolute(cwd) || cwd.length >= 1000) return false;
+  const store = real(dir);
+  const project = store && basename(store) === "memories" && basename(dirname(store)) === ".stashpad"
+    ? dirname(dirname(store))
+    : typeof input.cwd === "string" && isAbsolute(input.cwd) ? gitRoot(input.cwd) ?? input.cwd : null;
+  return inside(real(cwd), project === null ? null : real(project));
 }
 
 // Where the session's transcript and working folder are, for noteUncleanEnd (local paths, kept in
