@@ -89,7 +89,8 @@ function checkName(name, what) {
   return name;
 }
 
-export function createHandoff(dir, { text, origin = "manual", from = null, expiresDays = DEFAULT_EXPIRES_DAYS, redacted = 0, branch = null, now = new Date() }) {
+// replaceAuto: false keeps the other open auto notes (the unclean-end note must not expire them).
+export function createHandoff(dir, { text, origin = "manual", from = null, expiresDays = DEFAULT_EXPIRES_DAYS, redacted = 0, branch = null, replaceAuto = true, now = new Date() }) {
   return withStoreLock(dir, () => {
     keyFor(dir);
     prepareForWrite(dir);
@@ -105,7 +106,7 @@ export function createHandoff(dir, { text, origin = "manual", from = null, expir
       ...(checkBranch(branch) ? { branch } : {}),
     };
     const replaced = [];
-    if (origin === "auto") {
+    if (origin === "auto" && replaceAuto) {
       for (const old of readAll(dir)) {
         if (old.origin === "auto" && stateOf(old, now) === "open") {
           write(dir, { ...old, state: "expired", closed_at: now.toISOString(), closed_reason: `replaced by ${id}` });

@@ -158,18 +158,22 @@ export function handoffText(summary, reason, { git = null, unclean = null } = {}
 }
 
 // A session that wrote prompts but never reached the session end (crashed, killed, closed without
-// the hook): the next session start leaves an automatic handoff about it, once.
-function noteUncleanEnd(dir, input) {
+// the hook): the next session start leaves an automatic handoff about it, once. A session active in
+// the last UNCLEAN_AFTER_MS may simply be open in another window, so it does not count yet. The note
+// is added beside the other open auto handoffs, never in their place.
+export const UNCLEAN_AFTER_MS = 6 * 3600 * 1000;
+function noteUncleanEnd(dir, input, now = new Date()) {
   try {
     const me = sessionKey(input.session_id);
     if (!me) return;
-    const previous = listSessions(dir).find((s) => s.session !== me && (s.prompts ?? 0) > 0 && !s.ended_at && !s.unclean_noted);
+    const cutoff = now.getTime() - UNCLEAN_AFTER_MS;
+    const previous = listSessions(dir).find((s) => s.session !== me && (s.prompts ?? 0) > 0 && !s.ended_at && !s.unclean_noted && Date.parse(s.updated_at) <= cutoff);
     if (!previous) return;
-    updateSession(dir, previous.session, (s) => (s.unclean_noted = new Date().toISOString()));
+    updateSession(dir, previous.session, (s) => (s.unclean_noted = now.toISOString()), now);
     const summary = typeof previous.transcript_path === "string" ? summarizeTranscript(previous.transcript_path, { cwd: previous.cwd ?? null }) : null;
     const where = typeof previous.cwd === "string" && existsSync(previous.cwd) ? previous.cwd : null;
     const written = handoffText(summary, "an unclean end", { git: where ? gitStatus(where) : null, unclean: previous.updated_at });
-    createHandoff(dir, { text: written.text, origin: "auto", from: "hook", redacted: written.redacted, branch: written.branch });
+    createHandoff(dir, { text: written.text, origin: "auto", from: "hook", redacted: written.redacted, branch: written.branch, replaceAuto: false, now });
   } catch {
     // never break the session start
   }
@@ -208,14 +212,14 @@ function given(state, ids) {
 }
 
 // Returns the text to print (may be empty). Never throws.
-export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS, globalDir = null } = {}) {
+export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS, globalDir = null, now = new Date() } = {}) {
   const global = globalDir && resolve(globalDir) !== resolve(dir) && exists(globalDir) ? globalDir : null;
   const cwd = typeof input.cwd === "string" && isAbsolute(input.cwd) ? input.cwd : process.cwd();
   try {
     switch (event) {
       case "session-start": {
         // Compaction or /clear drops what the prompt hook gave earlier, so it may be given again.
-        if (input.source !== "compact") noteUncleanEnd(dir, input);
+        if (input.source !== "compact") noteUncleanEnd(dir, input, now);
         note(dir, input, (s) => {
           if (input.source === "compact" || input.source === "clear") s.given = [];
           s.source = typeof input.source === "string" ? input.source.slice(0, 20) : null;

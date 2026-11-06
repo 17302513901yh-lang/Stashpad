@@ -29,8 +29,9 @@ stashpad handoff cancel <id> --reason "already done"
 Before compaction and at the end of a session, the hooks leave an `auto` handoff with the last three requests, the
 files written, the git branch and the files that are not committed yet (up to 10, then a count). When a session never
 reaches its end (it crashed, was killed, or the window was closed before the hook ran), the next session start leaves
-a note that says so, built from that session's transcript, so the work is treated as unfinished. It says it may also
-still be running in another window, and it is written once per such session.
+a note that says so, built from that session's transcript, so the work is treated as unfinished. A session that was
+active in the last 6 hours does not count yet (it may just be open in another window). The note is written once per
+such session and is added beside the other open `auto` handoffs; it never expires them.
 
 `git status` runs with the repository's `core.fsmonitor` switched off (a repository's config cannot make Stashpad
 start a program), without taking the index lock, from an absolute path to git, and with a 2 second limit; without git

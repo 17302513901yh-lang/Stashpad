@@ -69,25 +69,47 @@ test("a session that never reached its end leaves a note at the next start, once
   const file = transcript([ask("Refactor the payment module into two files")]);
   runHook(dir, "session-start", { session_id: "s1", source: "startup", transcript_path: file });
   runHook(dir, "prompt", { session_id: "s1", prompt: "Refactor the payment module", transcript_path: file });
-  // s1 crashes: no session-end. s2 starts.
-  const start = runHook(dir, "session-start", { session_id: "s2", source: "startup" });
+  // s1 crashes: no session-end. s2 starts, more than 6 hours later.
+  const later = { now: new Date(Date.now() + 7 * 3600 * 1000) };
+  const start = runHook(dir, "session-start", { session_id: "s2", source: "startup" }, later);
   assert.match(start, /Open handoff/);
   const taken = claimHandoff(dir);
   assert.match(taken.text, /previous session .* did not end cleanly/);
   assert.match(taken.text, /Refactor the payment module into two files/);
-  runHook(dir, "session-start", { session_id: "s3", source: "startup" });
+  runHook(dir, "session-start", { session_id: "s3", source: "startup" }, later);
   assert.equal(listHandoffs(dir).handoffs.length, 0, "only once");
 
   // A session that ended cleanly leaves no such note.
   runHook(dir, "prompt", { session_id: "s4", prompt: "anything", transcript_path: file });
   runHook(dir, "session-end", { session_id: "s4", transcript_path: file });
   claimHandoff(dir); // the normal end-of-session note
-  runHook(dir, "session-start", { session_id: "s5", source: "startup" });
+  runHook(dir, "session-start", { session_id: "s5", source: "startup" }, later);
   assert.equal(listHandoffs(dir).handoffs.length, 0);
   // The same session resuming is not "another" session.
   runHook(dir, "prompt", { session_id: "s6", prompt: "anything", transcript_path: file });
   runHook(dir, "session-start", { session_id: "s6", source: "resume" });
   assert.equal(listHandoffs(dir).handoffs.length, 0);
+});
+
+test("a second window still open is not an unclean end, and the unclean note never replaces another auto note", () => {
+  const dir = fresh();
+  saveMemory(dir, { id: "a", kind: "fact", text: "The store exists for this test.", sourceType: "user", sourceRef: "t" });
+  const file = transcript([ask("Write the invoice export")]);
+  // Window A is open and working; window B ends cleanly and leaves its end-of-session note.
+  runHook(dir, "prompt", { session_id: "wa", prompt: "Write the invoice export", transcript_path: file });
+  runHook(dir, "prompt", { session_id: "wb", prompt: "Fix the date parser", transcript_path: file });
+  runHook(dir, "session-end", { session_id: "wb", transcript_path: file });
+  // A new window C starts an hour later: A is just busy elsewhere, and B's note stays open.
+  runHook(dir, "session-start", { session_id: "wc", source: "startup" }, { now: new Date(Date.now() + 3600 * 1000) });
+  let open = listHandoffs(dir).handoffs;
+  assert.equal(open.length, 1);
+  assert.doesNotMatch(claimHandoff(dir, { id: open[0].id }).text, /did not end cleanly/);
+  // Again, with B's note still open, and A silent for 7 hours: the unclean note joins it.
+  runHook(dir, "session-end", { session_id: "wb", transcript_path: file });
+  runHook(dir, "session-start", { session_id: "wd", source: "startup" }, { now: new Date(Date.now() + 7 * 3600 * 1000) });
+  open = listHandoffs(dir).handoffs;
+  assert.equal(open.length, 2, "the clean end note is not expired by the unclean note");
+  assert.equal(open.filter((h) => /did not end cleanly/.test(claimHandoff(dir, { id: h.id }).text)).length, 1);
 });
 
 test("the brief says when the handoff was left on another branch", { skip: !hasGit && "git is not installed" }, () => {
