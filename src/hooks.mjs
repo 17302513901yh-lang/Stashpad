@@ -227,14 +227,14 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
         const after = input.source === "compact" ? "Context was just compacted. Your Stashpad memory, again:\n" : "";
         // Stashpad's own line stays outside the data block; everything recalled goes inside it.
         if (!global) {
-          const brief = buildBrief(dir, { maxChars, cwd });
+          const brief = buildBrief(dir, { maxChars, cwd, anchorMoves: false });
           const out = after + fence(brief.text);
           logShown(dir, { event: "session-start", ids: brief.ids, chars: out.length, session: input.session_id });
           return out;
         }
         // Project first; the global store (true in every project) gets a third of the room.
-        const project = buildBrief(dir, { maxChars: Math.floor(maxChars * 0.67), cwd });
-        const wide = buildBrief(global, { maxChars: Math.floor(maxChars * 0.33), cwd });
+        const project = buildBrief(dir, { maxChars: Math.floor(maxChars * 0.67), cwd, anchorMoves: false });
+        const wide = buildBrief(global, { maxChars: Math.floor(maxChars * 0.33), cwd, anchorMoves: false });
         const everywhere = wide.text.split("\n").slice(1).join("\n");
         const out = after + fence(`${project.text}\nGlobal store (all projects):\n${everywhere}`);
         logShown(dir, { event: "session-start", ids: project.ids, chars: out.length - everywhere.length, session: input.session_id });
@@ -243,7 +243,7 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
       }
       case "prompt": {
         // Memories this session already got from this hook are not pasted again.
-        const local = recall(dir, input.prompt ?? "", { exclude: [...readPins(dir), ...safeGiven(dir, input)], cwd });
+        const local = recall(dir, input.prompt ?? "", { exclude: [...readPins(dir), ...safeGiven(dir, input)], cwd, anchorMoves: false });
         note(dir, input, (s) => {
           given(s, local.hits);
           remember(s, input);
@@ -256,7 +256,7 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
           shown(dir, local, out.length);
           return out;
         }
-        const wide = recall(global, input.prompt ?? "", { exclude: [...readPins(global), ...safeGiven(global, input)], limit: Math.max(0, 3 - local.hits.length), cwd });
+        const wide = recall(global, input.prompt ?? "", { exclude: [...readPins(global), ...safeGiven(global, input)], limit: Math.max(0, 3 - local.hits.length), cwd, anchorMoves: false });
         note(global, input, (s) => given(s, wide.hits));
         const extra = wide.text.split("\n").slice(2).join("\n");
         const out = !wide.text ? fence(local.text) : !local.text ? fence(wide.text.replace("Stashpad memories", "Stashpad global memories")) : fence(`${local.text}\n${extra}`);

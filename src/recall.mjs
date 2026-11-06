@@ -46,7 +46,8 @@ function safeCheck(dir, id, anchors, context) {
 
 // A match is clear when it shares at least two meaningful words with the prompt (synonyms count
 // only as a bonus), or one rare-looking word when the prompt itself is very short.
-export function recall(dir, prompt, { limit = 3, maxChars = DEFAULT_RECALL_CHARS, exclude = [], cwd = process.cwd() } = {}) {
+// anchorMoves: false (the hooks) skips the search for moved files; lint and `stashpad anchors` do it.
+export function recall(dir, prompt, { limit = 3, maxChars = DEFAULT_RECALL_CHARS, exclude = [], cwd = process.cwd(), anchorMoves = true } = {}) {
   const text = String(prompt ?? "").slice(0, 4000);
   const terms = new Set(keyTerms(text));
   if (terms.size === 0) return { text: "", hits: [] };
@@ -66,7 +67,7 @@ export function recall(dir, prompt, { limit = 3, maxChars = DEFAULT_RECALL_CHARS
   if (hits.length === 0) return { text: "", hits: [] };
   // Memories anchored to files say when those files changed; one whose files are all gone is skipped.
   const anchors = readAnchors(dir);
-  const context = Object.keys(anchors).length ? anchorContext(projectRoot(dir, cwd)) : null;
+  const context = Object.keys(anchors).length ? anchorContext(projectRoot(dir, cwd), { moves: anchorMoves }) : null;
   const lines = [`${DATA_LABEL}`, "Stashpad memories that match this request:"];
   let used = lines.join("\n").length;
   const shown = [];

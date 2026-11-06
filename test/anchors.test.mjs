@@ -9,7 +9,8 @@ import { handleMessage } from "../src/mcp.mjs";
 import { buildBrief } from "../src/brief.mjs";
 import { lint } from "../src/feedback.mjs";
 import { recall } from "../src/recall.mjs";
-import { blobHash, checkAnchors, cleanPath, locate, projectRoot, readAnchors, readAnchorsFile } from "../src/anchors.mjs";
+import { anchorContext, blobHash, checkAnchors, cleanPath, locate, projectRoot, readAnchors, readAnchorsFile } from "../src/anchors.mjs";
+import { existsSync } from "node:fs";
 import { acceptPending, readMemory, rejectPending } from "../src/store.mjs";
 
 // A project folder with its store in .stashpad/memories, so paths are relative to the project.
@@ -154,4 +155,37 @@ test("anchor, unanchor and a tampered anchors file", async () => {
   assert.deepEqual(Object.keys(readAnchors(dir)["tax-rules"]), ["src/billing/tax.ts"]);
   assert.equal((await cli(root, "unanchor", "tax-rules")).code, 0);
   assert.equal(readAnchors(dir)["tax-rules"], undefined);
+});
+
+test("checks read a bounded number of bytes, cache hashes, and skip build folders when looking for moves", async () => {
+  const { root, dir } = project();
+  await cli(root, "save", "tax", "--kind", "fact", "--source-type", "user", "--source-ref", "t", "--text", "VAT rules for invoices live in the tax module.", "--files", "src/billing/tax.ts");
+  assert.equal(readAnchorsFile(dir).sizes.tax["src/billing/tax.ts"], "export const VAT = 21;\n".length, "the size is stored with the anchor");
+  // Nothing may be read: the file is reported as not checked instead of read anyway.
+  const capped = checkAnchors(dir, "tax", { root, context: anchorContext(root, { maxBytes: 0 }) });
+  assert.equal(capped.files[0].state, "refused");
+  assert.match(capped.files[0].reason, /not checked: more than 50 MB/);
+  // A normal check fills the hash cache; after that an unchanged file needs no read at all.
+  assert.equal(checkAnchors(dir, "tax", { root }).files[0].state, "same");
+  assert.ok(existsSync(join(dir, ".sessions", "anchor-hashes.json")));
+  const cached = anchorContext(root, { maxBytes: 0 });
+  assert.equal(checkAnchors(dir, "tax", { root, context: cached }).files[0].state, "same");
+  assert.equal(cached.bytesRead, 0);
+  // Moved under a different name, the same content is found by size; inside dist/ it is not looked for.
+  mkdirSync(join(root, "lib"));
+  renameSync(join(root, "src", "billing", "tax.ts"), join(root, "lib", "vat.ts"));
+  assert.deepEqual(checkAnchors(dir, "tax", { root }).files[0], { path: "src/billing/tax.ts", state: "moved", to: "lib/vat.ts" });
+  mkdirSync(join(root, "dist"));
+  renameSync(join(root, "lib", "vat.ts"), join(root, "dist", "tax.ts"));
+  assert.equal(checkAnchors(dir, "tax", { root }).files[0].state, "gone");
+});
+
+test("the hooks do not look for moved files: a missing file is named, the memory is not hidden", async () => {
+  const { root, dir } = project();
+  await cli(root, "save", "rates", "--kind", "fact", "--source-type", "user", "--source-ref", "t", "--text", "Exchange rates for invoices come from the rates module.", "--files", "src/billing/rates.ts");
+  rmSync(join(root, "src", "billing", "rates.ts"));
+  const quick = recall(dir, "exchange rates invoices", { cwd: root, anchorMoves: false });
+  assert.equal(quick.hits.length, 1);
+  assert.match(quick.text, /missing here \(run stashpad anchors to look for a move\): src\/billing\/rates\.ts/);
+  assert.equal(recall(dir, "exchange rates invoices", { cwd: root }).hits.length, 0, "a full check still finds it gone");
 });
