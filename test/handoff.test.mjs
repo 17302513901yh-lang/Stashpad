@@ -36,6 +36,22 @@ test("a handoff is read exactly once; listing never takes it", () => {
   assert.equal(listHandoffs(dir, { all: true }).handoffs[0].claimed_by, "claude-code");
 });
 
+for (const byId of [true, false]) {
+  test(`claiming ${byId ? "by id" : "the next handoff"} counts only the remaining open handoffs`, () => {
+    const dir = fresh();
+    const first = createHandoff(dir, { text: "First note about the parser." });
+    createHandoff(dir, { text: "Second note about the lexer." });
+    const claimed = claimHandoff(dir, byId ? { id: first.id } : {});
+    assert.equal(claimed.claimed, true);
+    if (byId) assert.equal(claimed.id, first.id);
+    assert.equal(claimed.others_open, 1);
+    const [remaining] = listHandoffs(dir).handoffs;
+    assert.notEqual(remaining.id, claimed.id);
+    assert.equal(claimHandoff(dir, byId ? { id: remaining.id } : {}).others_open, 0);
+    assert.equal(claimHandoff(dir).claimed, false);
+  });
+}
+
 test("a person's note goes first; a newer agent note replaces older agent notes", () => {
   const dir = fresh();
   const a1 = createHandoff(dir, { text: "Agent note one about the build.", origin: "auto", now: at("2026-10-18T08:00:00Z") });

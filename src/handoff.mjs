@@ -134,7 +134,7 @@ export function claimHandoff(dir, { id = null, by = null, now = new Date() } = {
     if (state !== "open") throw new StoreError(`handoff ${record.id} is ${state}${record.claimed_by ? ` (taken by ${record.claimed_by})` : ""}; it can be read only once.`);
     write(dir, { ...record, state: "claimed", claimed_at: now.toISOString(), claimed_by: by ?? "unnamed session" });
     audit(dir, { action: "handoff-claim", id: record.id, by: by ?? null });
-    return { claimed: true, label: DATA_LABEL, id: record.id, origin: record.origin, from: record.from ?? null, branch: record.branch ?? null, created_at: record.created_at, flagged: record.flagged ?? null, text: record.text, others_open: open.length - (open.includes(record) ? 1 : 0) };
+    return { claimed: true, label: DATA_LABEL, id: record.id, origin: record.origin, from: record.from ?? null, branch: record.branch ?? null, created_at: record.created_at, flagged: record.flagged ?? null, text: record.text, others_open: open.length - (open.some((r) => r.id === record.id) ? 1 : 0) };
   });
 }
 
