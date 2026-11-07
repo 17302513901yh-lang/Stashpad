@@ -1,4 +1,8 @@
+<p align="center"><img src="docs/site/assets/icon.png" alt="Stashpad icon" width="96" height="96"></p>
 <h1 align="center">Stashpad</h1>
+<p align="center"><b>Good work. Worth remembering.</b></p>
+<p align="center"><a href="https://laaielichter.github.io/Stashpad/">Project website</a> · <a href="#quickstart">Get started</a> · <a href="docs/ANY-AGENT.md">Connect your agent</a> · <a href="CONTRIBUTING.md">Contribute</a></p>
+<p align="center"><a href="https://laaielichter.github.io/Stashpad/"><img src="docs/site/assets/social-card.png" alt="Stashpad — local memory for your AI agent. Plain files, clear sources, your say." width="1200"></a></p>
 <p align="center"><b>Local memory for any AI coding agent: an MCP server and CLI that keep plain Markdown notes with sources, a review queue and search.</b></p>
 <p align="center">
   <a href="https://github.com/laaielichter/stashpad/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/laaielichter/stashpad/actions/workflows/ci.yml/badge.svg"></a>
@@ -199,6 +203,8 @@ then `/plugin install reverseport@reverseport`, `stashpad@reverseport` or `agent
 ## Contributing and community
 
 Ideas, bug reports and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md), the [good first issues](https://github.com/laaielichter/stashpad/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) and [Discussions](https://github.com/laaielichter/stashpad/discussions). Security problems: [SECURITY.md](SECURITY.md).
+
+If Stashpad is useful to you, a GitHub star is welcome — entirely optional.
 
 ## License
 

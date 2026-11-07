@@ -38,7 +38,8 @@
     "CHANGELOG.md",
     "THIRD_PARTY_NOTICES.md",
     "third_party",
-    "!docs/demo"
+    "!docs/demo",
+    "!docs/site"
   ],
   "keywords": [
     "ai-agents",
@@ -60,7 +61,7 @@
     "type": "git",
     "url": "git+https://github.com/laaielichter/stashpad.git"
   },
-  "homepage": "https://github.com/laaielichter/stashpad#readme",
+  "homepage": "https://laaielichter.github.io/Stashpad/",
   "bugs": {
     "url": "https://github.com/laaielichter/stashpad/issues"
   },
