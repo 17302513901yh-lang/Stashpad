@@ -39,6 +39,29 @@ test("bad filter values give a clear error", () => {
   assert.throws(() => searchMemories(dir, "x", { kinds: ["idea"] }), /unknown kind/);
 });
 
+test("impossible dates are refused in every filter", () => {
+  const dir = store();
+  assert.throws(() => searchMemories(dir, "x", { asOf: "2026-13-45" }), /--as-of must be a date like 2026-10-01, not "2026-13-45"/);
+  assert.throws(() => searchMemories(dir, "x", { asOf: "2026-02-30" }), /--as-of must be a date like/);
+  assert.throws(() => listMemories(dir, { since: "2026-13-45" }), /--since must be a date like/);
+  assert.throws(() => listMemories(dir, { until: "2026-02-30" }), /--until must be a date like/);
+  const reply = handleMessage(
+    { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "stashpad_search", arguments: { query: "database", as_of: "2026-02-30" } } },
+    { dir },
+  );
+  assert.match(reply.result.content[0].text, /--as-of must be a date like/);
+});
+
+test("a range that runs backwards is refused, equal and leap days are fine", () => {
+  const dir = store();
+  assert.throws(
+    () => searchMemories(dir, "database", { since: "2026-12-01", until: "2026-01-01" }),
+    /--since 2026-12-01 is later than --until 2026-01-01/,
+  );
+  assert.doesNotThrow(() => listMemories(dir, { includeEnded: true, since: "2026-05-01", until: "2026-05-01" }));
+  assert.doesNotThrow(() => listMemories(dir, { includeEnded: true, since: "2024-02-29", until: "2024-02-29" }));
+});
+
 test("explain shows which words matched, including synonyms", async () => {
   const dir = store();
   const { results } = searchMemories(dir, "db backups", { explain: true });

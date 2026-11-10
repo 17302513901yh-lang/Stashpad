@@ -81,7 +81,7 @@ function isRealDate(value) {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
-const isDate = (value) =>
+export const isValidDay = (value) =>
   typeof value === "string" && DATE_PATTERN.test(value) && isRealDate(value);
 
 const isOptionalId = (value) =>
@@ -120,12 +120,12 @@ export function validateMemory(text, expectedId) {
   }
 
   for (const key of ["created_at", "valid_from", "last_confirmed_at"]) {
-    if (!isDate(meta[key])) errors.push(`${key} must be a real date as YYYY-MM-DD`);
+    if (!isValidDay(meta[key])) errors.push(`${key} must be a real date as YYYY-MM-DD`);
   }
-  if (meta.valid_to !== null && !isDate(meta.valid_to)) {
+  if (meta.valid_to !== null && !isValidDay(meta.valid_to)) {
     errors.push("valid_to must be a real date as YYYY-MM-DD, or null");
   }
-  if (isDate(meta.valid_from) && isDate(meta.valid_to) && meta.valid_to < meta.valid_from) {
+  if (isValidDay(meta.valid_from) && isValidDay(meta.valid_to) && meta.valid_to < meta.valid_from) {
     errors.push("valid_to must not be before valid_from");
   }
 
