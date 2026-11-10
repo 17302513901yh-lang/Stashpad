@@ -1093,6 +1093,7 @@ export async function run(argv, io = defaultIo()) {
       EACCES: "no permission for that file or folder",
       EPERM: "the system does not allow that change",
       ENOSPC: "the disk is full",
+      ENAMETOOLONG: "the id or path is too long for this file system",
       ENOENT: "a file or folder was not found",
       EROFS: "the folder is read-only",
       EISDIR: "a folder was given where a file was expected",

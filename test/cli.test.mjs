@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdtempSync, readFileSync, existsSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -136,4 +136,56 @@ test("--help prints usage and exits 0", async () => {
   const { io, out } = harness();
   assert.equal(await run(["--help"], io), 0);
   assert.match(out.join("\n"), /Usage:/);
+});
+
+test("an id over the limit is refused before anything is written", async () => {
+  const dir = freshDir();
+  const id = "x".repeat(65);
+  const { io, err } = harness();
+  assert.equal(await run(saveArgs(dir, id), io), 1);
+  assert.match(err.join("\n"), /at most 64 characters/);
+  assert.equal(existsSync(join(dir, `${id}.md`)), false);
+});
+
+test("an id at the limit can be saved and forgotten", async () => {
+  const dir = freshDir();
+  const id = "x".repeat(64);
+  assert.equal(await run(saveArgs(dir, id), harness().io), 0);
+  assert.ok(existsSync(join(dir, `${id}.md`)));
+
+  const forget = harness();
+  assert.equal(await run(["forget", id, "--dir", dir, "--reason", "test"], forget.io), 0);
+  assert.ok(existsSync(join(dir, "pending", `forget-${id}.json`)));
+});
+
+test("a memory stored with a longer id still lists, gets and searches", async () => {
+  const dir = freshDir();
+  const id = "x".repeat(80);
+  writeFileSync(join(dir, `${id}.md`), `---
+id: ${id}
+kind: fact
+created_at: 2026-09-10
+valid_from: 2026-09-10
+valid_to: null
+supersedes: null
+superseded_by: null
+source_type: user
+source_ref: legacy statement
+trust: user-stated
+last_confirmed_at: 2026-09-10
+---
+Legacy memory text.
+`);
+
+  const list = harness();
+  assert.equal(await run(["list", "--dir", dir], list.io), 0);
+  assert.match(list.out.join("\n"), new RegExp(id));
+
+  const get = harness();
+  assert.equal(await run(["get", id, "--dir", dir], get.io), 0);
+  assert.match(get.out.join("\n"), /Legacy memory text/);
+
+  const search = harness();
+  assert.equal(await run(["search", "Legacy", "--dir", dir], search.io), 0);
+  assert.match(search.out.join("\n"), new RegExp(id));
 });
