@@ -19,6 +19,7 @@ import {
   KINDS,
   REQUIRED_KEYS,
   TRUST_BY_SOURCE,
+  isValidDay,
   isValidId,
   parseMemory,
   validateMemory,
@@ -678,18 +679,18 @@ export function listMemories(dir, options = {}) {
   return { rows, skipped };
 }
 
-// Ranks memories against the query. total is how many memories were searched.
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-
 // Filters shared by list and search. Every filter is optional; together they must all hold (AND).
 //   kinds: ["decision", ...]   sourceTypes: ["user", ...]
 //   asOf: "YYYY-MM-DD"  what was valid on that day (ended memories included when they were valid then)
 //   since / until: "YYYY-MM-DD" on valid_from
 function filterEntries(entries, { includeEnded = false, today = todayIso(), kinds = null, sourceTypes = null, asOf = null, since = null, until = null } = {}) {
   for (const [name, value] of [["as-of", asOf], ["since", since], ["until", until]]) {
-    if (value !== null && value !== undefined && !DAY.test(value)) {
+    if (value !== null && value !== undefined && !isValidDay(value)) {
       throw new StoreError(`--${name} must be a date like 2026-10-01, not "${value}".`);
     }
+  }
+  if (since && until && since > until) {
+    throw new StoreError(`--since ${since} is later than --until ${until}.`);
   }
   if (kinds) {
     const bad = kinds.filter((k) => !KINDS.includes(k));
@@ -710,6 +711,7 @@ function filterEntries(entries, { includeEnded = false, today = todayIso(), kind
   );
 }
 
+// Ranks memories against the query. total is how many memories were searched.
 export function searchMemories(dir, query, options = {}) {
   const { limit = 10, explain = false } = options;
   const { entries, skipped } = readAll(dir);
