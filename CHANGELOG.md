@@ -1,10 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **UI listen errors are actionable:** an occupied or disallowed port prints a one-line message with `--port N` and `--port 0` alternatives, instead of a stack trace or file-permission hint. Thanks to @Daiyuanranfeng! (#43, #57)
+
 ## 0.4.0
 
 Local memory upgrades (file anchors, decisions with their reasons, once-per-session recall, fenced output, stronger secret checks) and a round of fixes from contributors. The tool contract changed: `stashpad_save` takes the optional arguments `files`, `why` and `rejected`; existing calls work as before.
 
-- **UI listen errors are actionable:** an occupied or disallowed port prints a one-line message with `--port N` and `--port 0` alternatives, instead of a stack trace or file-permission hint (#43).
 - **Id length limit:** ids are limited to 64 characters, so the `forget-` request file still fits. `save`, `forget` and the MCP save/forget tools refuse a longer id with a clear message before writing anything, while memories already stored with a longer id still list, search, get and load. Thanks to @Daiyuanranfeng! (#42, #54)
 - **Impossible dates are refused in the `search` and `list` filters:** `--as-of`, `--since` and `--until` (and the MCP `as_of`) reject a day that does not exist, like `2026-13-45` or `2026-02-30`, and a `--since` later than `--until` is named in the error instead of returning an empty result. Thanks to @bfs2021! (#46, #52)
 - **Missed searches are counted for `stashpad search --json` too**, so `stashpad misses` sees the searches agents make on the command line (#20).
