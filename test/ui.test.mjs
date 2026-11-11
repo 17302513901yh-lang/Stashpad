@@ -4,7 +4,8 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { request } from "node:http";
+import { request, Server } from "node:http";
+import { run } from "../src/cli.mjs";
 import { startUi } from "../src/ui.mjs";
 import { listMemories, listPending, saveMemory } from "../src/store.mjs";
 
@@ -141,4 +142,43 @@ test("search and the audit log are available through the page", async () => {
 test("the page script never writes raw HTML from stored data", () => {
   const script = readFileSync(join(here, "..", "src", "ui", "app.js"), "utf8");
   assert.doesNotMatch(script, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+});
+
+function cliIo() {
+  const out = [];
+  const err = [];
+  return { out, err, io: { stdout: (s) => out.push(s), stderr: (s) => err.push(s), env: {}, cwd: here } };
+}
+
+test("ui on an occupied explicit port returns an actionable error without a stack", async () => {
+  await withUi(fresh(), async (ui) => {
+    const { io, out, err } = cliIo();
+    assert.equal(await run(["ui", "--dir", fresh(), "--port", String(ui.port)], io), 1);
+    assert.deepEqual(out, []);
+    assert.deepEqual(err, [`Error: port ${ui.port} is already in use. Pick another with --port N, or use --port 0 to let the system choose.`]);
+    assert.equal((await call(ui.port)).status, 200);
+  });
+});
+
+test("ui without --port reports a busy default port", async (t) => {
+  t.mock.method(Server.prototype, "listen", function (port) {
+    assert.equal(port, 4317);
+    process.nextTick(() => this.emit("error", Object.assign(new Error("listen failed"), { code: "EADDRINUSE", syscall: "listen" })));
+    return this;
+  });
+  const { io, err } = cliIo();
+  assert.equal(await run(["ui", "--dir", fresh()], io), 1);
+  assert.deepEqual(err, ["Error: port 4317 is already in use. Pick another with --port N, or use --port 0 to let the system choose."]);
+});
+
+test("ui listen permission errors give a port-specific hint", async (t) => {
+  t.mock.method(Server.prototype, "listen", function (port) {
+    assert.equal(port, 123);
+    process.nextTick(() => this.emit("error", Object.assign(new Error("listen failed"), { code: "EACCES", syscall: "listen" })));
+    return this;
+  });
+  const { io, out, err } = cliIo();
+  assert.equal(await run(["ui", "--dir", fresh(), "--port", "123"], io), 1);
+  assert.deepEqual(out, []);
+  assert.deepEqual(err, ["Error: no permission to listen on port 123. Pick another with --port N, or use --port 0 to let the system choose."]);
 });

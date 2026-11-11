@@ -146,6 +146,8 @@ stashpad ui            # opens http://127.0.0.1:4317/ to review, search and read
 stashpad ui --open     # the same, and opens the page in your browser
 ```
 
+If the port is in use or permission to listen is denied, the command exits with a one-line error. Pick another port with `stashpad ui --port N`, or use `stashpad ui --port 0` to let the system choose a free port; the URL is printed when the page starts.
+
 Only this computer can reach the page. It is a small local page with no outside resources. See [the decision](docs/decisions/ui.md).
 
 Imports come in as JSON Lines (`id`, `kind`, `text`, optional `valid_from`, `source_ref`) or as plain text, one fact per paragraph.

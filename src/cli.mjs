@@ -358,7 +358,19 @@ async function cmdUi(io, dir, values) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
     return usageError(io, "--port must be a whole number from 0 to 65535");
   }
-  const ui = await startUi({ dir, port });
+  let ui;
+  try {
+    ui = await startUi({ dir, port });
+  } catch (error) {
+    const hint = "Pick another with --port N, or use --port 0 to let the system choose.";
+    if (error?.syscall === "listen" && error.code === "EADDRINUSE") {
+      throw new StoreError(`port ${port} is already in use. ${hint}`);
+    }
+    if (error?.syscall === "listen" && error.code === "EACCES") {
+      throw new StoreError(`no permission to listen on port ${port}. ${hint}`);
+    }
+    throw error;
+  }
   io.stdout(`Stashpad review page: ${ui.url}`);
   io.stdout(`Only this computer can reach it. It stays open until you press Ctrl+C. Store: ${dir}`);
   if (values.open) openInBrowser(ui.url);
