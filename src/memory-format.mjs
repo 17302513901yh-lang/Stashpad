@@ -32,7 +32,21 @@ export const TRUST_BY_SOURCE = {
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-export const isValidId = (id) => typeof id === "string" && ID_PATTERN.test(id);
+export const MAX_ID_LENGTH = 64;
+
+export const isValidId = (id) =>
+  typeof id === "string" && ID_PATTERN.test(id) && id.length <= MAX_ID_LENGTH;
+
+// Shape-only check for ids that already exist in a store: a memory saved
+// before the length limit must still be readable.
+export const hasValidIdShape = (id) => typeof id === "string" && ID_PATTERN.test(id);
+
+export function invalidIdMessage(id) {
+  if (typeof id === "string" && ID_PATTERN.test(id) && id.length > MAX_ID_LENGTH) {
+    return `invalid id "${id}". Use at most ${MAX_ID_LENGTH} characters.`;
+  }
+  return `invalid id "${id}". Use lowercase letters, digits and hyphens, for example "db-choice".`;
+}
 
 function parseScalar(raw) {
   if (raw === "" || raw === "null") return null;

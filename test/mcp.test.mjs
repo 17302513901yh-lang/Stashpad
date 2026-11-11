@@ -119,6 +119,17 @@ test("a store problem comes back as a tool error, not a crash", () => {
   assert.match(result.content[0].text, /invalid id/);
 });
 
+test("the save tool refuses an id over the limit", () => {
+  const result = call(fresh(), "stashpad_save", {
+    id: "x".repeat(65),
+    kind: "fact",
+    text: "Too long.",
+    source_ref: "test",
+  });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /at most 64 characters/);
+});
+
 test("stdio: messages in, replies out, bad JSON gets a parse error", async () => {
   const dir = seeded();
   const input = new PassThrough();

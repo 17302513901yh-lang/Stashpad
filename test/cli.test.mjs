@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdtempSync, readFileSync, existsSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, existsSync, writeFileSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -137,3 +137,91 @@ test("--help prints usage and exits 0", async () => {
   assert.equal(await run(["--help"], io), 0);
   assert.match(out.join("\n"), /Usage:/);
 });
+
+test("an id over the limit is refused before anything is written", async () => {
+  const dir = freshDir();
+  const id = "x".repeat(65);
+  const { io, err } = harness();
+  assert.equal(await run(saveArgs(dir, id), io), 1);
+  assert.match(err.join("\n"), /at most 64 characters/);
+  assert.equal(existsSync(join(dir, `${id}.md`)), false);
+});
+
+test("an id at the limit can be saved and forgotten", async () => {
+  const dir = freshDir();
+  const id = "x".repeat(64);
+  assert.equal(await run(saveArgs(dir, id), harness().io), 0);
+  assert.ok(existsSync(join(dir, `${id}.md`)));
+
+  const forget = harness();
+  assert.equal(await run(["forget", id, "--dir", dir, "--reason", "test"], forget.io), 0);
+  assert.ok(existsSync(join(dir, "pending", `forget-${id}.json`)));
+});
+
+test("a memory stored with a longer id still lists, gets and searches", async () => {
+  const dir = freshDir();
+  const id = "x".repeat(80);
+  writeFileSync(join(dir, `${id}.md`), `---
+id: ${id}
+kind: fact
+created_at: 2026-09-10
+valid_from: 2026-09-10
+valid_to: null
+supersedes: null
+superseded_by: null
+source_type: user
+source_ref: legacy statement
+trust: user-stated
+last_confirmed_at: 2026-09-10
+---
+Legacy memory text.
+`);
+
+  const list = harness();
+  assert.equal(await run(["list", "--dir", dir], list.io), 0);
+  assert.match(list.out.join("\n"), new RegExp(id));
+
+  const get = harness();
+  assert.equal(await run(["get", id, "--dir", dir], get.io), 0);
+  assert.match(get.out.join("\n"), /Legacy memory text/);
+
+  const search = harness();
+  assert.equal(await run(["search", "Legacy", "--dir", dir], search.io), 0);
+  assert.match(search.out.join("\n"), new RegExp(id));
+});
+
+test("a legacy long-id memory can be forgotten and its ending request accepted", async () => {
+  const dir = freshDir();
+  const id = "x".repeat(80);
+  assert.equal(await run(saveArgs(dir, "legacy"), harness().io), 0);
+  const path = join(dir, `${id}.md`);
+  renameSync(join(dir, "legacy.md"), path);
+  writeFileSync(path, readFileSync(path, "utf8").replace("id: legacy\n", `id: ${id}\n`));
+
+  const forget = harness();
+  assert.equal(await run(["forget", id, "--dir", dir, "--reason", "outdated"], forget.io), 0, forget.err.join("\n"));
+  const pending = join(dir, "pending", `forget-${id}.json`);
+  assert.ok(existsSync(pending));
+  const accept = harness();
+  assert.equal(await run(["accept", `forget-${id}`, "--dir", dir], accept.io), 0, accept.err.join("\n"));
+  assert.equal(existsSync(pending), false);
+  assert.match(readFileSync(path, "utf8"), new RegExp(`^valid_to: ${todayIso()}$`, "m"));
+});
+
+for (const action of ["accept", "reject"]) {
+  test(`a legacy long-id proposal can be ${action}ed`, async () => {
+    const dir = freshDir();
+    const id = "x".repeat(80);
+    assert.equal(await run(saveArgs(dir, "legacy", ["--source-type", "agent"]), harness().io), 0);
+    const pending = join(dir, "pending", `${id}.md`);
+    renameSync(join(dir, "pending", "legacy.md"), pending);
+    writeFileSync(pending, readFileSync(pending, "utf8").replace("id: legacy\n", `id: ${id}\n`));
+
+    const result = harness();
+    assert.equal(await run([action, id, "--dir", dir], result.io), 0, result.err.join("\n"));
+    assert.equal(existsSync(pending), false);
+    const destination = action === "accept" ? join(dir, `${id}.md`) : join(dir, "rejected", `${id}.md`);
+    assert.ok(existsSync(destination));
+    assert.match(readFileSync(destination, "utf8"), new RegExp(`^id: ${id}$`, "m"));
+  });
+}
