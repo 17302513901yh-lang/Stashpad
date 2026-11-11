@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
+
+Local memory upgrades (file anchors, decisions with their reasons, once-per-session recall, fenced output, stronger secret checks) and a round of fixes from contributors. The tool contract changed: `stashpad_save` takes the optional arguments `files`, `why` and `rejected`; existing calls work as before.
 
 - **Id length limit:** ids are limited to 64 characters, so the `forget-` request file still fits. `save`, `forget` and the MCP save/forget tools refuse a longer id with a clear message before writing anything, while memories already stored with a longer id still list, search, get and load. Thanks to @Daiyuanranfeng! (#42, #54)
-- **Impossible dates are refused in the `search` and `list` filters:** `--as-of`, `--since` and `--until` (and the MCP `as_of`) reject a day that does not exist, like `2026-13-45` or `2026-02-30`, and a `--since` later than `--until` is named in the error instead of returning an empty result (#46).
+- **Impossible dates are refused in the `search` and `list` filters:** `--as-of`, `--since` and `--until` (and the MCP `as_of`) reject a day that does not exist, like `2026-13-45` or `2026-02-30`, and a `--since` later than `--until` is named in the error instead of returning an empty result. Thanks to @bfs2021! (#46, #52)
 - **Missed searches are counted for `stashpad search --json` too**, so `stashpad misses` sees the searches agents make on the command line (#20).
 - **`stashpad import --format` works as documented** (`jsonl` or `text`) (#21).
 - **Search ignores accents on Latin letters:** `cafe` finds `café` and the other way round. Accents in other writing systems still count (#26).
@@ -26,8 +28,9 @@
 ### Thanks
 
 - @jay23606 for logging JSON search misses (#20), accent-insensitive search (#26), audit filters (#27), the Codex handoff (#28) and the Markdown export (#29).
-- @bfs2021 for the import `--format` fix (#21) and the import BOM fix (#36).
+- @bfs2021 for the import `--format` fix (#21), the import BOM fix (#36) and the real-date filters (#52).
 - @sunxiuguo for the handoff count fix and its careful tests (#38), a first contribution. Welcome!
+- @Daiyuanranfeng for the id length limit (#42, #54).
 
 ## 0.3.0
 

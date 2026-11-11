@@ -1,6 +1,6 @@
 {
   "name": "stashpad",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Local, readable memory for AI agents: Markdown files with sources, dates and a review queue.",
   "license": "MIT",
   "keywords": ["memory", "mcp", "local-first"]
