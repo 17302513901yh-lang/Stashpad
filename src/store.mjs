@@ -297,7 +297,7 @@ function saveMemoryUnlocked(dir, input, today = todayIso()) {
 function pendingPath(dir, id) {
   const isForget = id.startsWith("forget-");
   const target = isForget ? id.slice("forget-".length) : id;
-  if (!isValidId(target)) {
+  if (!hasValidIdShape(target)) {
     throw new StoreError(invalidIdMessage(id));
   }
   const path = join(dir, PENDING, isForget ? `${id}.json` : `${id}.md`);
@@ -309,7 +309,7 @@ function pendingPath(dir, id) {
 
 // A request from an agent to end a memory. Nothing is deleted. The memory stays, with an end date.
 function queueForgetUnlocked(dir, target, reason, sourceRef = "agent request", sourceType = "agent") {
-  if (!isValidId(target)) {
+  if (!hasValidIdShape(target)) {
     throw new StoreError(invalidIdMessage(target));
   }
   const { text } = readMemory(dir, target);

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdtempSync, readFileSync, existsSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, existsSync, writeFileSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -189,3 +189,39 @@ Legacy memory text.
   assert.equal(await run(["search", "Legacy", "--dir", dir], search.io), 0);
   assert.match(search.out.join("\n"), new RegExp(id));
 });
+
+test("a legacy long-id memory can be forgotten and its ending request accepted", async () => {
+  const dir = freshDir();
+  const id = "x".repeat(80);
+  assert.equal(await run(saveArgs(dir, "legacy"), harness().io), 0);
+  const path = join(dir, `${id}.md`);
+  renameSync(join(dir, "legacy.md"), path);
+  writeFileSync(path, readFileSync(path, "utf8").replace("id: legacy\n", `id: ${id}\n`));
+
+  const forget = harness();
+  assert.equal(await run(["forget", id, "--dir", dir, "--reason", "outdated"], forget.io), 0, forget.err.join("\n"));
+  const pending = join(dir, "pending", `forget-${id}.json`);
+  assert.ok(existsSync(pending));
+  const accept = harness();
+  assert.equal(await run(["accept", `forget-${id}`, "--dir", dir], accept.io), 0, accept.err.join("\n"));
+  assert.equal(existsSync(pending), false);
+  assert.match(readFileSync(path, "utf8"), new RegExp(`^valid_to: ${todayIso()}$`, "m"));
+});
+
+for (const action of ["accept", "reject"]) {
+  test(`a legacy long-id proposal can be ${action}ed`, async () => {
+    const dir = freshDir();
+    const id = "x".repeat(80);
+    assert.equal(await run(saveArgs(dir, "legacy", ["--source-type", "agent"]), harness().io), 0);
+    const pending = join(dir, "pending", `${id}.md`);
+    renameSync(join(dir, "pending", "legacy.md"), pending);
+    writeFileSync(pending, readFileSync(pending, "utf8").replace("id: legacy\n", `id: ${id}\n`));
+
+    const result = harness();
+    assert.equal(await run([action, id, "--dir", dir], result.io), 0, result.err.join("\n"));
+    assert.equal(existsSync(pending), false);
+    const destination = action === "accept" ? join(dir, `${id}.md`) : join(dir, "rejected", `${id}.md`);
+    assert.ok(existsSync(destination));
+    assert.match(readFileSync(destination, "utf8"), new RegExp(`^id: ${id}$`, "m"));
+  });
+}
