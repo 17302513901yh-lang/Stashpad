@@ -32,7 +32,25 @@ export const TRUST_BY_SOURCE = {
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-export const isValidId = (id) => typeof id === "string" && ID_PATTERN.test(id);
+// Windows reserves these device names even with an extension, so a memory file
+// called <id>.md cannot be created or checked out there. Only the whole id
+// counts (con-notes and com10 are fine); the match ignores case for old stores.
+const RESERVED_WINDOWS_IDS = new Set([
+  "con", "prn", "aux", "nul",
+  ...Array.from({ length: 9 }, (_, i) => `com${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `lpt${i + 1}`),
+]);
+
+export const isReservedWindowsId = (id) =>
+  typeof id === "string" && RESERVED_WINDOWS_IDS.has(id.toLowerCase());
+
+// Format only: reading an existing store must stay possible even if its id is
+// a reserved Windows name written before this rule existed.
+export const isWellFormedId = (id) => typeof id === "string" && ID_PATTERN.test(id);
+
+// What a *new* memory id may be. Read paths use isWellFormedId instead, so old
+// stores keep loading and lint can point at the offending ids.
+export const isValidId = (id) => isWellFormedId(id) && !isReservedWindowsId(id);
 
 function parseScalar(raw) {
   if (raw === "" || raw === "null") return null;

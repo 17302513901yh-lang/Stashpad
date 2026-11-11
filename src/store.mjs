@@ -21,6 +21,8 @@ import {
   TRUST_BY_SOURCE,
   isValidDay,
   isValidId,
+  isReservedWindowsId,
+  isWellFormedId,
   parseMemory,
   validateMemory,
 } from "./memory-format.mjs";
@@ -115,6 +117,9 @@ export function readAudit(dir, limit = 50, id) {
 function buildMemory(input, today) {
   const { id, kind, text, sourceType, sourceRef, validFrom, validTo = null, supersedes = null } = input;
 
+  if (isReservedWindowsId(id)) {
+    throw new StoreError(`invalid id "${id}". Windows reserves this name for a device. Pick another id.`);
+  }
   if (!isValidId(id)) {
     throw new StoreError(
       `invalid id "${id}". Use lowercase letters, digits and hyphens, for example "db-choice".`,
@@ -297,7 +302,7 @@ function saveMemoryUnlocked(dir, input, today = todayIso()) {
 function pendingPath(dir, id) {
   const isForget = id.startsWith("forget-");
   const target = isForget ? id.slice("forget-".length) : id;
-  if (!isValidId(target)) {
+  if (!isWellFormedId(target)) {
     throw new StoreError(`invalid id "${id}". Ids use lowercase letters, digits and hyphens.`);
   }
   const path = join(dir, PENDING, isForget ? `${id}.json` : `${id}.md`);
@@ -309,7 +314,7 @@ function pendingPath(dir, id) {
 
 // A request from an agent to end a memory. Nothing is deleted. The memory stays, with an end date.
 function queueForgetUnlocked(dir, target, reason, sourceRef = "agent request", sourceType = "agent") {
-  if (!isValidId(target)) {
+  if (!isWellFormedId(target)) {
     throw new StoreError(`invalid id "${target}". Ids use lowercase letters, digits and hyphens.`);
   }
   const { text } = readMemory(dir, target);
@@ -624,7 +629,7 @@ export function historyOf(dir, id) {
 }
 
 export function readMemory(dir, id) {
-  if (!isValidId(id)) {
+  if (!isWellFormedId(id)) {
     throw new StoreError(`invalid id "${id}". Ids use lowercase letters, digits and hyphens.`);
   }
   const path = filePath(dir, id);

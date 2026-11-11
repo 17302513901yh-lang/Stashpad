@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Windows device names are no longer valid ids:** `con`, `prn`, `aux`, `nul`, `com1`–`com9` and `lpt1`–`lpt9` are refused by `save`, `decide`, `import` and the MCP tools with the reason, so a store stays portable. An existing memory with such an id still loads and lists, and `stashpad lint` reports it with the new `id-not-portable` code (#45).
 - **Impossible dates are refused in the `search` and `list` filters:** `--as-of`, `--since` and `--until` (and the MCP `as_of`) reject a day that does not exist, like `2026-13-45` or `2026-02-30`, and a `--since` later than `--until` is named in the error instead of returning an empty result (#46).
 - **Missed searches are counted for `stashpad search --json` too**, so `stashpad misses` sees the searches agents make on the command line (#20).
 - **`stashpad import --format` works as documented** (`jsonl` or `text`) (#21).

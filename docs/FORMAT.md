@@ -9,7 +9,7 @@ All fields are required. Use `null` where a field has no value.
 
 | Field | Meaning |
 |---|---|
-| `id` | Lowercase letters, digits and hyphens. Must match the file name. |
+| `id` | Lowercase letters, digits and hyphens. Must match the file name. Windows device names (`con`, `prn`, `aux`, `nul`, `com1`–`com9`, `lpt1`–`lpt9`) are refused so the store stays portable; `con-notes` and `com10` are fine. |
 | `kind` | `fact`, `preference`, `decision` or `task` |
 | `created_at` | Date the memory was written, `YYYY-MM-DD` |
 | `valid_from` | Date from which the memory is true |
