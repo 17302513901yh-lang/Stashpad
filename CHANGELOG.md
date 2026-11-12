@@ -2,13 +2,9 @@
 
 ## Unreleased
 
-- **Windows device names are no longer valid ids:** `con`, `prn`, `aux`, `nul`, `com1`–`com9` and `lpt1`–`lpt9` are refused by `save`, `decide`, `import` and the MCP tools with the reason, so a store stays portable. An existing memory with such an id still loads and lists, and `stashpad lint` reports it with the new `id-not-portable` code. Thanks to @17302513901yh-lang! (#45, #55)
-
 - **`stashpad shown --since` refuses a day that does not exist:** `2026-13-45` and `2026-02-30` now fail with a clear message and exit code 2, the same check `search` and `list` already use. Thanks to @17302513901yh-lang! (#60, #61)
 
 - **camelCase names are searchable by their plain words:** `getUserProfile` is now tokenised as get / user / profile (and kept whole), so "user profile" finds it. Acronyms such as `parseHTTPResponse` split too, while ordinary title-case words stay whole. Thanks to @17302513901yh-lang! (#44, #62)
-
-- **UI listen errors are actionable:** an occupied or disallowed port prints a one-line message with `--port N` and `--port 0` alternatives, instead of a stack trace or file-permission hint. Thanks to @Daiyuanranfeng! (#43, #57)
 
 ## 0.4.0
 
@@ -34,6 +30,8 @@ Local memory upgrades (file anchors, decisions with their reasons, once-per-sess
 - **`stashpad import` keeps the first line of a file saved with a byte order mark** (UTF-8 BOM, also with CRLF endings) (#36, fixes #32).
 - **Claiming a handoff by id reports the right number of handoffs still open** (#38, fixes #33).
 - **Fixes from review:** secret checks no longer refuse ordinary settings (only names ending in KEY, TOKEN, SECRET, PASSWORD and the like count, values must look secret, matches are whole tokens) and a branch name never costs the automatic handoff; `search`, `list`, `about` and the anchor listings are defused; anchor checks from hooks read at most 50 MB, skip build and dependency folders, cache hashes and leave the move search to lint and `stashpad anchors`; a second open window is not an unclean end, and that note no longer expires the session-end handoff; anchors use a worktree's own files and are refused in the global store; paths in session files are trusted only under `~/.claude`/`~/.codex` and inside the project; `git status` runs without `GIT_*` variables (the docs now say filter drivers can still run); more harness tags are defused (`command-name`, `local-command-stdout`, `task-notification`, `thinking`, `function_calls` …); one unreadable or refused file no longer breaks a memory's anchors; the shown log is cut by bytes and forgets deleted ids.
+- **Windows device names are no longer valid ids:** `con`, `prn`, `aux`, `nul`, `com1`–`com9` and `lpt1`–`lpt9` are refused by `save`, `decide`, `import` and the MCP tools with the reason, so a store stays portable. An existing memory with such an id still loads and lists, and `stashpad lint` reports it with the new `id-not-portable` code. Thanks to @17302513901yh-lang! (#45, #55)
+- **UI listen errors are actionable:** an occupied or disallowed port prints a one-line message with `--port N` and `--port 0` alternatives, instead of a stack trace or file-permission hint. Thanks to @Daiyuanranfeng! (#43, #57)
 
 ### Thanks
 
