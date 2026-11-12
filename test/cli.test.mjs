@@ -225,3 +225,14 @@ for (const action of ["accept", "reject"]) {
     assert.match(readFileSync(destination, "utf8"), new RegExp(`^id: ${id}$`, "m"));
   });
 }
+
+test("shown --since refuses a day that does not exist (#60)", async () => {
+  const dir = freshDir();
+  for (const day of ["2026-13-45", "2026-02-30"]) {
+    const { io, err } = harness();
+    assert.equal(await run(["shown", "--since", day, "--dir", dir], io), 2);
+    assert.match(err.join("\n"), new RegExp(`--since must be a date like 2026-10-01, not "${day}"`));
+  }
+  assert.equal(await run(["shown", "--since", "2026-02-28", "--dir", dir], harness().io), 0);
+  assert.equal(await run(["shown", "--today", "--dir", dir], harness().io), 0);
+});

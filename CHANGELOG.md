@@ -3,6 +3,9 @@
 ## Unreleased
 
 - **Windows device names are no longer valid ids:** `con`, `prn`, `aux`, `nul`, `com1`–`com9` and `lpt1`–`lpt9` are refused by `save`, `decide`, `import` and the MCP tools with the reason, so a store stays portable. An existing memory with such an id still loads and lists, and `stashpad lint` reports it with the new `id-not-portable` code. Thanks to @17302513901yh-lang! (#45, #55)
+
+- **`stashpad shown --since` refuses a day that does not exist:** `2026-13-45` and `2026-02-30` now fail with a clear message and exit code 2, the same check `search` and `list` already use. Thanks to @17302513901yh-lang! (#60)
+
 - **UI listen errors are actionable:** an occupied or disallowed port prints a one-line message with `--port N` and `--port 0` alternatives, instead of a stack trace or file-permission hint. Thanks to @Daiyuanranfeng! (#43, #57)
 
 ## 0.4.0
