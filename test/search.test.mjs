@@ -206,3 +206,29 @@ test("Chinese, Japanese and Korean text is searchable without spaces", async () 
   assert.equal(searchMemories(dir, "火曜日").results[0].id, "ja-deploy");
   assert.equal(searchMemories(dir, "office").results[0].id, "en-note");
 });
+
+test("tokenize splits camelCase identifiers but keeps title-case words whole (#44)", () => {
+  assert.deepEqual(tokenize("A Dark-theme, in SQLite!"), ["dark", "theme", "in", "sqlite"]);
+  const camel = tokenize("getUserProfile");
+  for (const w of ["get", "user", "profile", "getuserprofile"]) assert.ok(camel.includes(w), `missing ${w} in ${camel}`);
+  const acronym = tokenize("parseHTTPResponse");
+  for (const w of ["parse", "http", "response", "parsehttpresponse"]) assert.ok(acronym.includes(w), `missing ${w} in ${acronym}`);
+  assert.deepEqual(tokenize("get_cart_total"), ["get", "cart", "total"]);
+  assert.deepEqual(tokenize("abc123def"), ["abc123def"]);
+  assert.deepEqual(tokenize("plain"), ["plain"]);
+  assert.deepEqual(tokenize("Beëindigen café"), ["beeindigen", "cafe"]);
+});
+
+test("search finds an identifier memory by its plain words (#44)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "stashpad-camel-"));
+  saveMemory(dir, {
+    id: "camel-note", kind: "fact",
+    text: "Call getUserProfile when the identifier changes.",
+    sourceType: "user", sourceRef: "chat",
+  }, "2026-10-01");
+  for (const query of ["user profile", "getUserProfile", "profile"]) {
+    const { io, out } = harness();
+    assert.equal(await run(["search", query, "--dir", dir, "--json"], io), 0);
+    assert.ok(JSON.parse(out[0]).some((r) => r.id === "camel-note"), `no hit for ${query}`);
+  }
+});
