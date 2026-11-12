@@ -10,6 +10,7 @@ import { StoreError } from "./errors.mjs";
 import { withStoreLock } from "./lock.mjs";
 import { keyFor, openLine, readData, sealLine } from "./vault.mjs";
 import { findInstructionLikeText } from "./security.mjs";
+import { isReservedWindowsId } from "./memory-format.mjs";
 import { isCurrent, queueForget, readEntries, readMemory, staleMemories, todayIso } from "./store.mjs";
 import { listHandoffs } from "./handoff.mjs";
 import { readPins } from "./pins.mjs";
@@ -83,6 +84,7 @@ export function lint(dir, { today = todayIso(), staleDays = 180, soonDays = 14, 
     if (findInstructionLikeText(e.body)) add("reads-like-instruction", e.id, "the text reads like an order; it stays data, but a person should check it.");
   }
   for (const e of entries) {
+    if (isReservedWindowsId(e.id)) add("id-not-portable", e.id, "Windows reserves this name for a device, so the store cannot be checked out there: save a new id with --supersedes and end this one.");
     if (e.meta.supersedes && !byId.has(e.meta.supersedes)) add("broken-link", e.id, `supersedes ${e.meta.supersedes}, which is not in the store.`);
     if (e.meta.superseded_by && !byId.has(e.meta.superseded_by)) add("broken-link", e.id, `superseded_by ${e.meta.superseded_by}, which is not in the store.`);
   }

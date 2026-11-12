@@ -89,6 +89,7 @@ Say what you found, and ask for it to end with `forget --reason "<why>"`. A pers
 Errors say what to do next. Examples:
 
 - `invalid id`: use lowercase letters, digits and hyphens.
+- `invalid id` with "Windows reserves this name for a device": `con`, `prn`, `aux`, `nul`, `com1`–`com9` and `lpt1`–`lpt9` cannot be file names on Windows, so they are refused on every system. Pick another id (`con-notes` is fine).
 - `already exists`: pick a new id. Memories are not overwritten.
 - `looks like a secret`: remove the key or password from the text. "a secret value from this computer (NAME)" means
   the text holds the value of that environment variable or `.env` entry.

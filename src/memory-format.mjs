@@ -32,14 +32,29 @@ export const TRUST_BY_SOURCE = {
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+// Windows reserves these device names even with an extension, so a memory file
+// called <id>.md cannot be created or checked out there. Only the whole id
+// counts (con-notes and com10 are fine); the match ignores case for old stores.
+const RESERVED_WINDOWS_IDS = new Set([
+  "con", "prn", "aux", "nul",
+  ...Array.from({ length: 9 }, (_, i) => `com${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `lpt${i + 1}`),
+]);
+
+export const isReservedWindowsId = (id) =>
+  typeof id === "string" && RESERVED_WINDOWS_IDS.has(id.toLowerCase());
+
 export const MAX_ID_LENGTH = 64;
 
-export const isValidId = (id) =>
-  typeof id === "string" && ID_PATTERN.test(id) && id.length <= MAX_ID_LENGTH;
-
-// Shape-only check for ids that already exist in a store: a memory saved
-// before the length limit must still be readable.
+// The one shape-only helper (from #54): every read path uses it, so a memory
+// saved before the length limit or the Windows rule stays readable.
 export const hasValidIdShape = (id) => typeof id === "string" && ID_PATTERN.test(id);
+
+// What a *new* memory id may be: well-formed, within the length limit from #54
+// and not a Windows device name. Read paths use hasValidIdShape instead, so old
+// stores keep loading and lint can point at the offending ids.
+export const isValidId = (id) =>
+  hasValidIdShape(id) && id.length <= MAX_ID_LENGTH && !isReservedWindowsId(id);
 
 export function invalidIdMessage(id) {
   if (typeof id === "string" && ID_PATTERN.test(id) && id.length > MAX_ID_LENGTH) {

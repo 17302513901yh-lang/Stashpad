@@ -23,6 +23,7 @@ import {
   invalidIdMessage,
   isValidDay,
   isValidId,
+  isReservedWindowsId,
   parseMemory,
   validateMemory,
 } from "./memory-format.mjs";
@@ -117,6 +118,9 @@ export function readAudit(dir, limit = 50, id) {
 function buildMemory(input, today) {
   const { id, kind, text, sourceType, sourceRef, validFrom, validTo = null, supersedes = null } = input;
 
+  if (isReservedWindowsId(id)) {
+    throw new StoreError(`invalid id "${id}". Windows reserves this name for a device. Pick another id.`);
+  }
   if (!isValidId(id)) {
     throw new StoreError(invalidIdMessage(id));
   }
