@@ -25,6 +25,8 @@ test("Windows device names are not portable memory ids", () => {
     assert.equal(isValidId(id), true, id);
   }
   assert.equal(isValidId("../escape"), false, "the old id rule still holds");
+  assert.equal(isValidId("a".repeat(64)), true, "the 64-character limit from #54 stays in force");
+  assert.equal(isValidId("a".repeat(65)), false, "the 64-character limit from #54 still holds after the rebase");
 });
 
 test("save refuses a reserved id with the reason, and still accepts near misses", () => {

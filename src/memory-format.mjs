@@ -44,13 +44,24 @@ const RESERVED_WINDOWS_IDS = new Set([
 export const isReservedWindowsId = (id) =>
   typeof id === "string" && RESERVED_WINDOWS_IDS.has(id.toLowerCase());
 
-// Format only: reading an existing store must stay possible even if its id is
-// a reserved Windows name written before this rule existed.
-export const isWellFormedId = (id) => typeof id === "string" && ID_PATTERN.test(id);
+export const MAX_ID_LENGTH = 64;
 
-// What a *new* memory id may be. Read paths use isWellFormedId instead, so old
+// The one shape-only helper (from #54): every read path uses it, so a memory
+// saved before the length limit or the Windows rule stays readable.
+export const hasValidIdShape = (id) => typeof id === "string" && ID_PATTERN.test(id);
+
+// What a *new* memory id may be: well-formed, within the length limit from #54
+// and not a Windows device name. Read paths use hasValidIdShape instead, so old
 // stores keep loading and lint can point at the offending ids.
-export const isValidId = (id) => isWellFormedId(id) && !isReservedWindowsId(id);
+export const isValidId = (id) =>
+  hasValidIdShape(id) && id.length <= MAX_ID_LENGTH && !isReservedWindowsId(id);
+
+export function invalidIdMessage(id) {
+  if (typeof id === "string" && ID_PATTERN.test(id) && id.length > MAX_ID_LENGTH) {
+    return `invalid id "${id}". Use at most ${MAX_ID_LENGTH} characters.`;
+  }
+  return `invalid id "${id}". Use lowercase letters, digits and hyphens, for example "db-choice".`;
+}
 
 function parseScalar(raw) {
   if (raw === "" || raw === "null") return null;

@@ -19,10 +19,11 @@ import {
   KINDS,
   REQUIRED_KEYS,
   TRUST_BY_SOURCE,
+  hasValidIdShape,
+  invalidIdMessage,
   isValidDay,
   isValidId,
   isReservedWindowsId,
-  isWellFormedId,
   parseMemory,
   validateMemory,
 } from "./memory-format.mjs";
@@ -121,9 +122,7 @@ function buildMemory(input, today) {
     throw new StoreError(`invalid id "${id}". Windows reserves this name for a device. Pick another id.`);
   }
   if (!isValidId(id)) {
-    throw new StoreError(
-      `invalid id "${id}". Use lowercase letters, digits and hyphens, for example "db-choice".`,
-    );
+    throw new StoreError(invalidIdMessage(id));
   }
   if (id.startsWith("forget-")) {
     throw new StoreError(`invalid id "${id}". The prefix "forget-" is reserved for ending requests. Pick another id.`);
@@ -302,8 +301,8 @@ function saveMemoryUnlocked(dir, input, today = todayIso()) {
 function pendingPath(dir, id) {
   const isForget = id.startsWith("forget-");
   const target = isForget ? id.slice("forget-".length) : id;
-  if (!isWellFormedId(target)) {
-    throw new StoreError(`invalid id "${id}". Ids use lowercase letters, digits and hyphens.`);
+  if (!hasValidIdShape(target)) {
+    throw new StoreError(invalidIdMessage(id));
   }
   const path = join(dir, PENDING, isForget ? `${id}.json` : `${id}.md`);
   if (!existsSync(path)) {
@@ -314,8 +313,8 @@ function pendingPath(dir, id) {
 
 // A request from an agent to end a memory. Nothing is deleted. The memory stays, with an end date.
 function queueForgetUnlocked(dir, target, reason, sourceRef = "agent request", sourceType = "agent") {
-  if (!isWellFormedId(target)) {
-    throw new StoreError(`invalid id "${target}". Ids use lowercase letters, digits and hyphens.`);
+  if (!hasValidIdShape(target)) {
+    throw new StoreError(invalidIdMessage(target));
   }
   const { text } = readMemory(dir, target);
   const { meta: targetMeta } = parseMemory(text);
@@ -629,12 +628,16 @@ export function historyOf(dir, id) {
 }
 
 export function readMemory(dir, id) {
-  if (!isWellFormedId(id)) {
-    throw new StoreError(`invalid id "${id}". Ids use lowercase letters, digits and hyphens.`);
+  if (!hasValidIdShape(id)) {
+    throw new StoreError(invalidIdMessage(id));
   }
   const path = filePath(dir, id);
   if (!existsSync(path)) {
-    throw new StoreError(`no memory named "${id}" in ${dir}. Run "stashpad list --all" to see what exists.`);
+    throw new StoreError(
+      isValidId(id)
+        ? `no memory named "${id}" in ${dir}. Run "stashpad list --all" to see what exists.`
+        : invalidIdMessage(id),
+    );
   }
   assertSafeFile(path);
   return { path, text: readData(dir, path) };

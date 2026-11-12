@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { validateDocuments, validateMemory } from "../src/memory-format.mjs";
+import { validateDocuments, validateMemory, isValidId, MAX_ID_LENGTH } from "../src/memory-format.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const examples = join(root, "examples", "memories");
@@ -36,6 +36,11 @@ test("example memory folder is valid", () => {
 
 test("a correct memory has no errors", () => {
   assert.deepEqual(check(valid), []);
+});
+
+test("ids are limited to 64 characters", () => {
+  assert.equal(isValidId("x".repeat(MAX_ID_LENGTH)), true);
+  assert.equal(isValidId("x".repeat(MAX_ID_LENGTH + 1)), false);
 });
 
 test("a missing key is reported", () => {

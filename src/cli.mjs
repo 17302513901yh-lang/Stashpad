@@ -358,7 +358,19 @@ async function cmdUi(io, dir, values) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
     return usageError(io, "--port must be a whole number from 0 to 65535");
   }
-  const ui = await startUi({ dir, port });
+  let ui;
+  try {
+    ui = await startUi({ dir, port });
+  } catch (error) {
+    const hint = "Pick another with --port N, or use --port 0 to let the system choose.";
+    if (error?.syscall === "listen" && error.code === "EADDRINUSE") {
+      throw new StoreError(`port ${port} is already in use. ${hint}`);
+    }
+    if (error?.syscall === "listen" && error.code === "EACCES") {
+      throw new StoreError(`no permission to listen on port ${port}. ${hint}`);
+    }
+    throw error;
+  }
   io.stdout(`Stashpad review page: ${ui.url}`);
   io.stdout(`Only this computer can reach it. It stays open until you press Ctrl+C. Store: ${dir}`);
   if (values.open) openInBrowser(ui.url);
@@ -1093,6 +1105,7 @@ export async function run(argv, io = defaultIo()) {
       EACCES: "no permission for that file or folder",
       EPERM: "the system does not allow that change",
       ENOSPC: "the disk is full",
+      ENAMETOOLONG: "the id or path is too long for this file system",
       ENOENT: "a file or folder was not found",
       EROFS: "the folder is read-only",
       EISDIR: "a folder was given where a file was expected",
