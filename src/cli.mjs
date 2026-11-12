@@ -1,7 +1,7 @@
 // Command line interface for Stashpad. Returns an exit code; never calls process.exit itself.
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { parseMemory } from "./memory-format.mjs";
+import { isValidDay, parseMemory } from "./memory-format.mjs";
 import { DATA_LABEL, defuse, defuseValues, fence, findInstructionLikeText } from "./security.mjs";
 import { serveMcp } from "./mcp.mjs";
 import { runEval } from "./eval.mjs";
@@ -795,7 +795,7 @@ function cmdShown(io, dir, values) {
     io.stdout(removed ? "Cleared the log of what was shown." : "Nothing to clear.");
     return 0;
   }
-  if (values.since !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(values.since)) return usageError(io, "--since must be a date like 2026-10-01");
+  if (values.since !== undefined && !isValidDay(values.since)) return usageError(io, `--since must be a date like 2026-10-01, not "${values.since}".`);
   const since = values.today ? todayIso() : values.since ?? null;
   const report = shownReport(dir, { since, session: values.session ?? null });
   if (values.json) {
