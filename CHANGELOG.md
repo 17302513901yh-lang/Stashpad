@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **camelCase names are searchable by their plain words:** `getUserProfile` is now tokenised as get / user / profile (and kept whole), so "user profile" finds it. Acronyms such as `parseHTTPResponse` split too, while ordinary title-case words stay whole. Thanks to @17302513901yh-lang! (#44)
+
 - **UI listen errors are actionable:** an occupied or disallowed port prints a one-line message with `--port N` and `--port 0` alternatives, instead of a stack trace or file-permission hint. Thanks to @Daiyuanranfeng! (#43, #57)
 
 ## 0.4.0
