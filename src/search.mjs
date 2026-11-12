@@ -11,21 +11,35 @@ const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hang
 export function tokenize(text) {
   const tokens = [];
   const folded = text.normalize("NFD").replace(/(\p{Script=Latin})\p{M}+/gu, "$1").normalize("NFC");
-  for (const piece of folded.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
-    if (piece === "") continue;
-    if (!CJK.test(piece)) {
-      if (piece.length >= 2) tokens.push(piece);
-      continue;
+  for (const raw of folded.split(/[^\p{L}\p{N}]+/u)) {
+    if (raw === "") continue;
+    // Split an identifier at camel boundaries BEFORE lowercasing and keep the
+    // whole identifier too, so "user profile" and getUserProfile both find it.
+    // Only pieces with a lower-to-upper boundary are split: applying the
+    // acronym rule to title-case words would turn "SQLite" into sq + lite.
+    const parts = /(?<=\p{Ll})(?=\p{Lu})/u.test(raw)
+      ? raw.replace(/(?<=\p{Ll})(?=\p{Lu})/gu, " ")
+           .replace(/(?<=\p{Lu})(?=\p{Lu}\p{Ll})/gu, " ").split(" ").filter(Boolean)
+      : [raw];
+    const whole = raw.toLowerCase();
+    if (parts.length > 1 && whole.length >= 2) tokens.push(whole);
+    for (const part of parts) {
+      const piece = part.toLowerCase();
+      if (piece === "") continue;
+      if (!CJK.test(piece)) {
+        if (piece.length >= 2) tokens.push(piece);
+        continue;
+      }
+      CJK.lastIndex = 0;
+      const rest = piece.replace(CJK, " ").split(" ").filter((w) => w.length >= 2);
+      tokens.push(...rest);
+      for (const run of piece.match(CJK)) {
+        const chars = [...run];
+        if (chars.length === 1) tokens.push(run);
+        for (let i = 0; i + 1 < chars.length; i += 1) tokens.push(chars[i] + chars[i + 1]);
+      }
+      CJK.lastIndex = 0;
     }
-    CJK.lastIndex = 0;
-    const rest = piece.replace(CJK, " ").split(" ").filter((w) => w.length >= 2);
-    tokens.push(...rest);
-    for (const run of piece.match(CJK)) {
-      const chars = [...run];
-      if (chars.length === 1) tokens.push(run);
-      for (let i = 0; i + 1 < chars.length; i += 1) tokens.push(chars[i] + chars[i + 1]);
-    }
-    CJK.lastIndex = 0;
   }
   return tokens;
 }
