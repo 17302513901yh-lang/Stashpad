@@ -37,10 +37,17 @@ jobs:
           if [ ! -s notes.md ]; then echo "No CHANGELOG section for ${version}"; exit 1; fi
           printf '\nInstall: `npm install -g stashpad@%s` · Check your setup: `stashpad doctor --client`\n' "${version}" >> notes.md
 
-      - name: Create the GitHub release
+      - name: Create the GitHub release, or fill in the notes of one made on the website
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME#v}" --notes-file notes.md
+        run: |
+          # A release made on the website or with `gh release create` makes the tag too, so it
+          # already exists when this run starts. Then update it instead of failing before npm.
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release edit "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME#v}" --notes-file notes.md
+          else
+            gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME#v}" --notes-file notes.md --verify-tag
+          fi
 
       - name: Publish to npm (trusted publishing; skipped when not set up)
         id: npm
