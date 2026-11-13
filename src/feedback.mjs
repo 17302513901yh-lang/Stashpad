@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { StoreError } from "./errors.mjs";
 import { withStoreLock } from "./lock.mjs";
 import { keyFor, openLine, readData, sealLine } from "./vault.mjs";
-import { findInstructionLikeText } from "./security.mjs";
+import { findInstructionLikeText, findSecrets } from "./security.mjs";
 import { isReservedWindowsId } from "./memory-format.mjs";
 import { isCurrent, queueForget, readEntries, readMemory, staleMemories, todayIso } from "./store.mjs";
 import { listHandoffs } from "./handoff.mjs";
@@ -24,6 +24,14 @@ export function giveFeedback(dir, id, { signal, note = null, by = null } = {}) {
   if (!SIGNALS.includes(signal)) throw new StoreError(`signal must be one of ${SIGNALS.join(", ")}.`);
   readMemory(dir, id); // throws a clear error when the memory does not exist
   if (note !== null && (/[\r\n]/.test(note) || note.length > 300)) throw new StoreError("note must be one line of at most 300 characters.");
+  // A note is free text that is written to the store, so it gets the same
+  // secret check as memories, handoff text and ending/reject reasons. Do it
+  // before the lock and the append: with --signal wrong the ending request
+  // would refuse the note anyway, but the feedback line would already exist.
+  if (note !== null) {
+    const secrets = findSecrets(note);
+    if (secrets.length > 0) throw new StoreError(`feedback not saved: the note looks like a secret (${secrets.join(", ")}). Remove it. Notes must not hold keys or passwords.`);
+  }
   withStoreLock(dir, () => {
     keyFor(dir);
     appendFileSync(join(dir, FEEDBACK), `${sealLine(dir, JSON.stringify({ at: new Date().toISOString(), id, signal, note, by }))}\n`);

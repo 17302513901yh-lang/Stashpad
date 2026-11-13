@@ -71,6 +71,15 @@ function checkText(text) {
   if (secrets.length > 0) throw new StoreError(`handoff not saved: this looks like a secret (${secrets.join(", ")}). Remove it.`);
 }
 
+// A cancel reason is free text that goes into the handoff record and the audit
+// log, so it needs the same check as the handoff text itself. Refusing here
+// leaves the handoff open: nothing is written yet.
+function checkReason(reason) {
+  if (reason === null || reason === undefined) return;
+  const secrets = findSecrets(String(reason));
+  if (secrets.length > 0) throw new StoreError(`handoff not cancelled: the reason looks like a secret (${secrets.join(", ")}). Remove it.`);
+}
+
 // True for a git branch name as git allows it (and holding no secret).
 export function validBranch(branch) {
   return typeof branch === "string" && branch.length <= 200 && /^[^\s\u0000-\u001f\u007f~^:?*[\\]+$/.test(branch) && !branch.includes("..") && findSecrets(branch).length === 0;
@@ -149,6 +158,7 @@ export function cancelHandoff(dir, id, { reason = null, now = new Date() } = {})
     if (!record) throw new StoreError(`no handoff "${id}". See them with: stashpad handoff list --all`);
     const state = stateOf(record, now);
     if (state !== "open") throw new StoreError(`handoff ${id} is already ${state}.`);
+    checkReason(reason);
     write(dir, { ...record, state: "cancelled", closed_at: now.toISOString(), closed_reason: reason });
     audit(dir, { action: "handoff-cancel", id, reason });
     return { id, state: "cancelled" };

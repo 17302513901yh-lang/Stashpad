@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "../src/cli.mjs";
 import { cancelHandoff, claimHandoff, createHandoff, listHandoffs } from "../src/handoff.mjs";
-import { giveFeedback, lint } from "../src/feedback.mjs";
+import { giveFeedback, lint, readFeedback } from "../src/feedback.mjs";
 import { buildBrief } from "../src/brief.mjs";
 import { handleMessage } from "../src/mcp.mjs";
 import { encryptStore } from "../src/encrypt.mjs";
@@ -129,6 +129,43 @@ test("feedback: stale shows in lint, wrong queues an ending request, helpful cle
   assert.match((await cli(dir, "lint")).out, /marked-wrong\s+port-choice/);
   const mcp = handleMessage({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "stashpad_feedback", arguments: { id: "db-choice", signal: "stale" } } }, { dir }).result;
   assert.equal(JSON.parse(mcp.content[0].text).recorded, true);
+});
+
+test("feedback notes and handoff cancel reasons are checked for secrets (#34)", async () => {
+  const dir = fresh();
+  saveMemory(dir, { id: "db-choice", kind: "decision", text: "We keep data in SQLite for now.", sourceType: "user", sourceRef: "test" });
+  const secret = "token ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+  const feedbackFile = join(dir, "feedback.jsonl");
+
+  // The refusal happens before anything is written, including the --signal
+  // wrong path where the ending request would otherwise refuse after the write.
+  assert.throws(() => giveFeedback(dir, "db-choice", { signal: "stale", note: secret }), /feedback not saved: the note looks like a secret/);
+  assert.equal(existsSync(feedbackFile), false, "no feedback line was written");
+  assert.throws(() => giveFeedback(dir, "db-choice", { signal: "wrong", note: secret }), /feedback not saved: the note looks like a secret/);
+  assert.equal(existsSync(feedbackFile), false, "--signal wrong also writes nothing");
+  assert.equal(listPending(dir).rows.some((r) => r.id === "forget-db-choice"), false, "no ending request either");
+
+  const byCli = await cli(dir, "feedback", "db-choice", "--signal", "stale", "--note", secret);
+  assert.equal(byCli.code, 1);
+  assert.match(byCli.err, /feedback not saved: the note looks like a secret/);
+  assert.equal(existsSync(feedbackFile), false, "the CLI path writes nothing");
+
+  const byMcp = handleMessage({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "stashpad_feedback", arguments: { id: "db-choice", signal: "stale", note: secret } } }, { dir }).result;
+  assert.match(byMcp.content[0].text, /looks like a secret/);
+  assert.equal(existsSync(feedbackFile), false, "the MCP path writes nothing");
+
+  // A note without a secret still works as before.
+  giveFeedback(dir, "db-choice", { signal: "stale", note: "moved to Postgres?" });
+  assert.deepEqual(readFeedback(dir).map((f) => f.note), ["moved to Postgres?"]);
+
+  const h = createHandoff(dir, { text: "Parser half done; next: tests for the lexer." });
+  assert.throws(() => cancelHandoff(dir, h.id, { reason: secret }), /handoff not cancelled: the reason looks like a secret/);
+  assert.equal(listHandoffs(dir).handoffs.length, 1, "a refused cancel leaves the handoff open");
+  const cancelByCli = await cli(dir, "handoff", "cancel", h.id, "--reason", secret);
+  assert.equal(cancelByCli.code, 1);
+  assert.match(cancelByCli.err, /handoff not cancelled: the reason looks like a secret/);
+  assert.equal(listHandoffs(dir).handoffs.length, 1, "the CLI refusal also leaves it open");
+  assert.equal(cancelHandoff(dir, h.id, { reason: "no longer needed" }).state, "cancelled", "a clean reason still cancels");
 });
 
 test("lint reports a pin that ended and changes nothing", () => {
