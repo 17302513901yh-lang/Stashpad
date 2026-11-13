@@ -134,7 +134,7 @@ test("feedback: stale shows in lint, wrong queues an ending request, helpful cle
 test("feedback notes and handoff cancel reasons are checked for secrets (#34)", async () => {
   const dir = fresh();
   saveMemory(dir, { id: "db-choice", kind: "decision", text: "We keep data in SQLite for now.", sourceType: "user", sourceRef: "test" });
-  const secret = "token ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+  const secret = "token ghp_" + "a".repeat(36);
   const feedbackFile = join(dir, "feedback.jsonl");
 
   // The refusal happens before anything is written, including the --signal
