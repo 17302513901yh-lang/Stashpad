@@ -8,7 +8,7 @@ import { writeAtomic } from "./fsx.mjs";
 import { withStoreLock } from "./lock.mjs";
 import { keyTerms, tokenize, stem } from "./search.mjs";
 import { isCurrent, readEntries, todayIso } from "./store.mjs";
-import { loadStoreSynonyms } from "./synonyms.mjs";
+import { loadStoreSynonyms, MAX_GROUPS, MAX_GROUP_SIZE } from "./synonyms.mjs";
 import { keyFor, openLine, sealLine } from "./vault.mjs";
 import { StoreError } from "./errors.mjs";
 
@@ -76,16 +76,28 @@ export function missReport(dir, { top = 15 } = {}) {
     });
 }
 
+// One group, as a comparable key: the same words in any order or case are the
+// same group. Duplicated words are folded the way they are when adding.
+const groupKey = (words) => [...new Set(words.map((w) => String(w).trim().toLowerCase()).filter(Boolean))].sort().join("\u0000");
+
 // Adds one synonym group to <store>/synonyms.json (a person only, from the command line).
 export function addSynonyms(dir, words) {
   const group = [...new Set(words.map((w) => String(w).trim().toLowerCase()).filter(Boolean))];
-  if (group.length < 2 || group.length > 20) throw new StoreError("a synonym group needs 2 to 20 words.");
+  if (group.length < 2 || group.length > MAX_GROUP_SIZE) throw new StoreError(`a synonym group needs 2 to ${MAX_GROUP_SIZE} words.`);
   return withStoreLock(dir, () => {
     keyFor(dir);
     const path = join(dir, "synonyms.json");
-    const { groups } = loadStoreSynonyms(dir);
+    const { groups, problem } = loadStoreSynonyms(dir);
+    // The loader deliberately ignores a file it cannot read. Writing back its
+    // empty `groups` would replace a hand-edited file with just the new group,
+    // so refuse before any write and leave the file byte-for-byte untouched.
+    // This also covers groups dropped for their shape or beyond the limit.
+    if (problem) throw new StoreError(`synonyms.json was not changed: ${problem}. Fix the file by hand before adding a group.`);
+    const key = groupKey(group);
+    if (groups.some((g) => groupKey(g) === key)) return { groups: groups.length, added: false, duplicate: true };
+    if (groups.length >= MAX_GROUPS) throw new StoreError(`synonyms.json already holds the limit of ${MAX_GROUPS} groups; remove one before adding another.`);
     const next = [...groups, group];
     writeAtomic(path, `${JSON.stringify({ groups: next }, null, 2)}\n`);
-    return { groups: next.length };
+    return { groups: next.length, added: true, duplicate: false };
   });
 }

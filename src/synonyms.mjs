@@ -8,8 +8,8 @@ import { stem, tokenize } from "./search.mjs";
 
 export const SYNONYM_WEIGHT = 0.5;
 const MAX_FILE_BYTES = 64 * 1024;
-const MAX_GROUPS = 500;
-const MAX_GROUP_SIZE = 20;
+export const MAX_GROUPS = 500;
+export const MAX_GROUP_SIZE = 20;
 
 export const BUILTIN_GROUPS = [
   ["password", "passwd", "credential", "wachtwoord", "sleutel"],

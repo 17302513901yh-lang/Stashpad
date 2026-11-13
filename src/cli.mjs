@@ -915,7 +915,7 @@ export async function run(argv, io = defaultIo()) {
       case "synonym": {
         if (id !== "add") return usageError(io, "use: stashpad synonym add <word> <word...>");
         const done = addSynonyms(dir, positionals.slice(2));
-        io.stdout(`Added. ${done.groups} synonym group(s) in this store.`);
+        io.stdout(`${done.duplicate ? "Already there" : "Added"}. ${done.groups} synonym group(s) in this store.`);
         return 0;
       }
       case "duplicates": {
