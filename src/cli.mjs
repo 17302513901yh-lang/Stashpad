@@ -209,6 +209,14 @@ export function defaultIo() {
   };
 }
 
+
+// Number options take plain digits only. Number() alone is not a check:
+// Number("") is 0, Number("1e1") is 10, Number("0x5") is 5 and " 3 " is
+// trimmed, so the raw text is tested before it is parsed.
+function isDigitsOnly(text) {
+  return /^[0-9]+$/.test(text);
+}
+
 function usageError(io, message) {
   io.stderr(`${message}\n\n${USAGE}`);
   return 2;
@@ -362,7 +370,7 @@ function cmdEval(io, values) {
 async function cmdUi(io, dir, values) {
   const portText = values.port;
   const port = portText === undefined ? 4317 : Number(portText);
-  if ((portText !== undefined && !/^[0-9]+$/.test(portText)) || !Number.isInteger(port) || port < 0 || port > 65535) {
+  if ((portText !== undefined && !isDigitsOnly(portText)) || !Number.isInteger(port) || port < 0 || port > 65535) {
     return usageError(io, "--port must be a whole number from 0 to 65535");
   }
   let ui;
@@ -411,7 +419,7 @@ function cmdAudit(io, dir, id, values) {
   const limitText = values.limit;
   const limit = limitText === undefined ? 50 : Number(limitText);
   if (
-    (limitText !== undefined && !/^[0-9]+$/.test(limitText)) ||
+    (limitText !== undefined && !isDigitsOnly(limitText)) ||
     !Number.isInteger(limit) || limit < 1 || limit > 10000
   ) {
     return usageError(io, "audit --limit must be a whole number from 1 to 10000");
@@ -535,7 +543,7 @@ function cmdSearch(io, dir, query, values) {
     return usageError(io, 'search needs words, for example: stashpad search "database"');
   }
   const limit = values.limit === undefined ? 10 : Number(values.limit);
-  if ((values.limit !== undefined && !/^[0-9]+$/.test(values.limit)) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+  if ((values.limit !== undefined && !isDigitsOnly(values.limit)) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
     return usageError(io, "--limit must be a whole number from 1 to 100");
   }
   const badFilter = checkFilterValues(io, values);
@@ -608,7 +616,7 @@ async function cmdDoctor(io, dir, values) {
 
 function cmdBrief(io, dir, values) {
   const maxChars = values["max-chars"] === undefined ? DEFAULT_BRIEF_CHARS : Number(values["max-chars"]);
-  if ((values["max-chars"] !== undefined && !/^[0-9]+$/.test(values["max-chars"])) || !Number.isInteger(maxChars) || maxChars < 300 || maxChars > 20000) {
+  if ((values["max-chars"] !== undefined && !isDigitsOnly(values["max-chars"])) || !Number.isInteger(maxChars) || maxChars < 300 || maxChars > 20000) {
     return usageError(io, "--max-chars must be a whole number from 300 to 20000");
   }
   const brief = buildBrief(dir, { maxChars, cwd: io.cwd });
@@ -714,7 +722,7 @@ async function cmdHandoff(io, dir, [action, id], values) {
     if (values.text === undefined) return usageError(io, 'handoff leave needs --text, for example: stashpad handoff leave --text "Parser half done; next: tests."');
     const text = values.text === "-" ? await io.readStdin() : values.text;
     const days = values["expires-days"] === undefined ? undefined : Number(values["expires-days"]);
-    if (days !== undefined && (!/^[0-9]+$/.test(values["expires-days"]) || !Number.isInteger(days) || days < 1 || days > 90)) {
+    if (days !== undefined && (!isDigitsOnly(values["expires-days"]) || !Number.isInteger(days) || days < 1 || days > 90)) {
       return usageError(io, "expires-days must be a whole number from 1 to 90.");
     }
     const r = createHandoff(dir, { text, origin: values.auto ? "auto" : "manual", from: values.from ?? null, branch: values.branch ?? null, ...(days === undefined ? {} : { expiresDays: days }) });
@@ -822,7 +830,7 @@ function cmdShown(io, dir, values) {
   }
   if (values.since !== undefined && !isValidDay(values.since)) return usageError(io, `--since must be a date like 2026-10-01, not "${values.since}".`);
   const limit = values.limit === undefined ? 20 : Number(values.limit);
-  if ((values.limit !== undefined && !/^[0-9]+$/.test(values.limit)) || !Number.isInteger(limit) || limit < 1 || limit > 1000) return usageError(io, "--limit must be a whole number from 1 to 1000");
+  if ((values.limit !== undefined && !isDigitsOnly(values.limit)) || !Number.isInteger(limit) || limit < 1 || limit > 1000) return usageError(io, "--limit must be a whole number from 1 to 1000");
   const since = values.today ? todayIso() : values.since ?? null;
   const report = shownReport(dir, { since, session: values.session ?? null });
   if (values.json) {
@@ -899,7 +907,7 @@ export async function run(argv, io = defaultIo()) {
         return cmdGet(io, dir, id, values);
       case "entities": {
         const limit = values.limit === undefined ? 30 : Number(values.limit);
-        if ((values.limit !== undefined && !/^[0-9]+$/.test(values.limit)) || !Number.isInteger(limit) || limit < 1 || limit > 500) return usageError(io, "--limit must be a whole number from 1 to 500");
+        if ((values.limit !== undefined && !isDigitsOnly(values.limit)) || !Number.isInteger(limit) || limit < 1 || limit > 500) return usageError(io, "--limit must be a whole number from 1 to 500");
         const { total, rows } = listEntities(dir, { limit, includeEnded: values.all === true });
         if (values.json) io.stdout(JSON.stringify(defuseValues({ total, rows })));
         else if (rows.length === 0) io.stdout("No names, tools or files found in the current memories.");
