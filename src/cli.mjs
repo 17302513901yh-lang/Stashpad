@@ -53,7 +53,7 @@ import {
 import { cancelHandoff, claimHandoff, createHandoff, listHandoffs } from "./handoff.mjs";
 import { SIGNALS, giveFeedback, lint } from "./feedback.mjs";
 import { lastGiven } from "./sessions.mjs";
-import { decisionBody, decisionId } from "./decisions.mjs";
+import { decisionBody, decisionId, decisionWords } from "./decisions.mjs";
 import { hooksPaused, setHooksPaused } from "./hookswitch.mjs";
 import { statusLine } from "./statusline.mjs";
 import { clearShown, logShown, shownReport } from "./shown.mjs";
@@ -275,13 +275,17 @@ async function cmdDecide(io, dir, words, values) {
   const text = decisionBody({ choice, why: values.why, rejected: values.rejected ?? [], by: values.by ?? null });
   const taken = (candidate) => existsSync(join(dir, `${candidate}.md`)) || existsSync(join(dir, "pending", `${candidate}.md`));
   const id = values.id ?? decisionId(choice, taken);
-  return cmdSave(io, dir, id, {
+  const code = await cmdSave(io, dir, id, {
     ...values,
     kind: "decision",
     text,
     "source-type": values["source-type"] ?? "user",
     "source-ref": values["source-ref"] ?? "decision recorded with stashpad decide",
   });
+  if (code === 0 && values.id === undefined && !values.json && decisionWords(choice).length === 0) {
+    io.stdout("Tip: give it a name you can remember with --id <id>.");
+  }
+  return code;
 }
 
 function cmdReview(io, dir, values) {

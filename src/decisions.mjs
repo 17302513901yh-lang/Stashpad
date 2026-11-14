@@ -9,6 +9,7 @@
 //
 // The first line is the choice; the other lines are optional and come in this order.
 import { StoreError } from "./errors.mjs";
+import { todayIso } from "./store.mjs";
 
 const LABELS = { why: "Why", rejected: "Rejected", by: "Decided by" };
 const MAX_CHOICE = 300;
@@ -71,10 +72,16 @@ export function decisionLine(body) {
   return extra.length ? `${d.choice} (${extra.join("; ")})` : d.choice;
 }
 
+// The words of a choice that can carry an id: Latin letters and digits, with accents folded away.
+export function decisionWords(choice) {
+  return String(choice).toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").match(/[a-z0-9]+/g) ?? [];
+}
+
 // An id from the choice when none is given: decision-<first words>, with a number when it is taken.
-export function decisionId(choice, taken = () => false) {
-  const words = String(choice).toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").match(/[a-z0-9]+/g) ?? [];
-  const stem = `decision-${words.slice(0, 6).join("-") || "note"}`.slice(0, 60).replace(/-+$/, "");
+// A choice without Latin words or digits gets the day instead: decision-<today>, then -2, -3.
+export function decisionId(choice, taken = () => false, today = todayIso()) {
+  const words = decisionWords(choice);
+  const stem = `decision-${words.slice(0, 6).join("-") || today}`.slice(0, 60).replace(/-+$/, "");
   let id = stem;
   for (let n = 2; taken(id); n += 1) id = `${stem}-${n}`;
   return id;
