@@ -236,3 +236,29 @@ test("shown --since refuses a day that does not exist (#60)", async () => {
   assert.equal(await run(["shown", "--since", "2026-02-28", "--dir", dir], harness().io), 0);
   assert.equal(await run(["shown", "--today", "--dir", dir], harness().io), 0);
 });
+
+test("one-id commands refuse a second id before changing anything (#69)", async () => {
+  const dir = freshDir();
+  assert.equal(await run(saveArgs(dir, "n1", ["--source-type", "agent"]), harness().io), 0);
+  for (const command of ["accept", "reject", "get", "history", "pin", "unpin", "confirm", "forget", "restore"]) {
+    const h = harness();
+    assert.equal(await run([command, "n1", "n2", "--dir", dir], h.io), 2, `${command} must be a usage error`);
+    assert.match(h.err.join("\n"), new RegExp(`${command} takes one id, but got 2: n1, n2\. Run it once for each id\.`));
+  }
+  // Nothing was accepted: the refusal happens before the switch, so the note stays pending.
+  assert.equal(existsSync(join(dir, "pending", "n1.md")), true);
+  assert.equal(existsSync(join(dir, "n1.md")), false);
+  assert.equal(await run(["accept", "n1", "--dir", dir], harness().io), 0, "one id still works");
+  assert.equal(existsSync(join(dir, "n1.md")), true);
+
+  // Commands that legitimately take several words are untouched.
+  const many = freshDir();
+  for (const id of ["keep-id", "other-a", "other-b"]) {
+    assert.equal(await run(saveArgs(many, id, ["--text", `A distinct note about ${id}.`]), harness().io), 0);
+  }
+  const merged = harness();
+  assert.equal(await run(["merge", "keep-id", "other-a", "other-b", "--dir", many], merged.io), 0, "merge still takes several ids");
+  assert.match(merged.out.join("\n"), /other-a, other-b/);
+  const search = harness();
+  assert.equal(await run(["search", "test", "project", "--dir", many], search.io), 0, "search still takes several words");
+});

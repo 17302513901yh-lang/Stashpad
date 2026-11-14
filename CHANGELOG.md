@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Commands that take one id no longer swallow the rest:** `accept n1 n2` used to accept only `n1` and print success. `accept`, `reject`, `get`, `history`, `pin`, `unpin`, `confirm`, `forget` and `restore` now refuse extra words with a usage error (exit code 2) naming every id, before anything is read or written. Commands that take several words (`merge`, `anchor`, `search`, …) are unchanged. Thanks to @17302513901yh-lang! (#69)
+
 - **`stashpad shown --since` refuses a day that does not exist:** `2026-13-45` and `2026-02-30` now fail with a clear message and exit code 2, the same check `search` and `list` already use. Thanks to @17302513901yh-lang! (#60, #61)
 
 - **camelCase names are searchable by their plain words:** `getUserProfile` is now tokenised as get / user / profile (and kept whole), so "user profile" finds it. Acronyms such as `parseHTTPResponse` split too, while ordinary title-case words stay whole. Thanks to @17302513901yh-lang! (#44, #62)
