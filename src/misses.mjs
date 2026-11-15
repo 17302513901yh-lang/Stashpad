@@ -69,9 +69,18 @@ export function missReport(dir, { top = 15 } = {}) {
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, top)
     .map(([term, count]) => {
+      // Best candidate first: a shorter edit distance wins, a shared prefix wins a tie, then alphabetical,
+      // so the suggestion the hint prints is the same on every run.
       const close = [...vocab]
-        .filter((w) => w !== term && w.length >= 4 && (distance(term, w) <= 2 || (Math.min(term.length, w.length) >= 5 && (term.startsWith(w) || w.startsWith(term)))))
-        .slice(0, 3);
+        .filter((w) => w !== term && w.length >= 4)
+        .map((w) => {
+          const d = distance(term, w);
+          return { w, d, prefix: Math.min(term.length, w.length) >= 5 && (term.startsWith(w) || w.startsWith(term)) };
+        })
+        .filter(({ d, prefix }) => d <= 2 || prefix)
+        .sort((a, b) => a.d - b.d || Number(b.prefix) - Number(a.prefix) || a.w.localeCompare(b.w))
+        .slice(0, 3)
+        .map(({ w }) => w);
       return { term, count, close };
     });
 }

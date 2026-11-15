@@ -78,6 +78,28 @@ test("synonym add refuses an unreadable file, duplicates and the group limit (#3
   assert.equal(readFileSync(file, "utf8"), atLimit, "the limit refusal leaves the file unchanged");
 });
 
+test("close words are the nearest ones first, so the hint suggests the better synonym", async () => {
+  const dir = fresh();
+  saveMemory(dir, { id: "srv", kind: "fact", text: "Each stage runs on the staging server.", sourceType: "user", sourceRef: "t" });
+  await run(["search", "stagin", "--dir", dir], io([]));
+  const [row] = missReport(dir);
+  assert.equal(row.term, "stagin");
+  // "staging" is one edit away, "stage" is two, even though "stage" was stored first.
+  assert.deepEqual(row.close, ["staging", "stage"]);
+  const lines = [];
+  assert.equal(await run(["misses", "--dir", dir], io(lines)), 0);
+  assert.match(lines.join("\n"), /synonym add stagin staging\b/);
+});
+
+test("close words at the same distance keep a stable order", async () => {
+  const dir = fresh();
+  saveMemory(dir, { id: "spellings", kind: "fact", text: "staginy and staginx are spellings nobody searches for.", sourceType: "user", sourceRef: "t" });
+  await run(["search", "stagin", "--dir", dir], io([]));
+  const [row] = missReport(dir);
+  assert.equal(row.term, "stagin");
+  assert.deepEqual(row.close.slice(0, 2), ["staginx", "staginy"]);
+});
+
 test("synonym add needs at least two words", async () => {
   const out = [];
   const err = [];
