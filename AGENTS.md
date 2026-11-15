@@ -15,5 +15,6 @@ Stashpad is a local memory for AI agents. Memories are Markdown files with a sou
 - Never add keys or secrets to examples or tests.
 - Third-party code: only with a permissive license, recorded in `THIRD_PARTY_NOTICES.md`.
 - No personal data in code, docs or commit messages.
+- Do not edit `CHANGELOG.md` in your pull request; the maintainer adds the entry, with credit to you, when it is merged. This keeps pull requests from conflicting with each other.
 
 Full guide for agents: `AGENT-GUIDE.md`. Skill for Claude: `skills/stashpad/SKILL.md`.

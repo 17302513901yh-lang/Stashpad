@@ -134,7 +134,7 @@ test("isInsideInstall spots a store inside the install folder", () => {
 
 test("the tool contract matches the golden file and the versions agree", async () => {
   const golden = JSON.parse(readFileSync(join(root, "docs", "tool-contract.json"), "utf8"));
-  assert.deepEqual(contractOf(TOOLS), golden, 'tools changed. If on purpose, run "npm run contract" and note it in the changelog.');
+  assert.deepEqual(contractOf(TOOLS), golden, 'tools changed. If on purpose, run "npm run contract" and say so in the pull request.');
   assert.equal(JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version, VERSION);
 });
 
