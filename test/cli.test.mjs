@@ -132,6 +132,54 @@ test("unknown command is a usage error", async () => {
   assert.match(err.join("\n"), /Unknown command/);
 });
 
+test("a usage error is two lines: the message and a pointer to --help (#71)", async () => {
+  for (const [args, message] of [
+    [["serch", "postgres"], /Unknown command "serch"/],
+    [["frobnicate"], /Unknown command "frobnicate"/],
+    [["feedback", "x", "--signal", "bad"], /signal must be one of/],
+    [["forget", "db-choice"], /forget needs --reason/],
+  ]) {
+    const { io, err } = harness();
+    assert.equal(await run(args, io), 2, `${args.join(" ")}: exit 2`);
+    const lines = err.join("\n").split("\n");
+    assert.equal(lines.length, 2, `${args.join(" ")}: message + one pointer line, not the whole help`);
+    assert.match(lines[0], message, `${args.join(" ")}: the useful message`);
+    assert.match(lines[1], /Run "stashpad --help" for all commands\./, `${args.join(" ")}: where the help is`);
+    assert.doesNotMatch(err.join("\n"), /^Usage:/m, `${args.join(" ")}: no full help`);
+  }
+});
+
+test("a typo suggests the closest command, an unrelated word does not (#71)", async () => {
+  for (const [typo, expected] of [["serch", "search"], ["reveiw", "review"], ["snapshott", "snapshot"]]) {
+    const { io, err } = harness();
+    assert.equal(await run([typo], io), 2);
+    assert.match(err.join("\n"), new RegExp(`Did you mean "${expected}"\\?`), `${typo}: suggests ${expected}`);
+  }
+  for (const word of ["frobnicate", "explode"]) {
+    const { io, err } = harness();
+    assert.equal(await run([word], io), 2);
+    assert.doesNotMatch(err.join("\n"), /Did you mean/, `${word}: no suggestion when nothing is close`);
+  }
+});
+
+test("--help and no command still print the full help (#71)", async () => {
+  const help = harness();
+  assert.equal(await run(["--help"], help.io), 0);
+  assert.match(help.out.join("\n"), /^Usage:/m);
+  assert.ok(help.out.join("\n").split("\n").length > 50, "the full help, not a pointer");
+  const none = harness();
+  assert.equal(await run([], none.io), 2);
+  assert.match(none.err.join("\n"), /^Usage:/m);
+  assert.ok(none.err.join("\n").split("\n").length > 50, "no command still prints the full help");
+});
+
+test("the suggestion list stays in step with the command switch (#71)", async () => {
+  const { COMMANDS } = await import("../src/cli.mjs");
+  const source = readFileSync(join(root, "src", "cli.mjs"), "utf8");
+  const cases = [...source.matchAll(/^\s+case "([a-z-]+)":/gm)].map((m) => m[1]);
+  assert.deepEqual(cases, COMMANDS, "every switch case is in COMMANDS, in the same order");
+});
+
 test("a wrong option value is a usage error, a store problem stays 1", async () => {
   const dir = freshDir();
   const cases = [
