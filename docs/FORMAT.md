@@ -63,9 +63,10 @@ stashpad decide "We use Postgres for the main database" --why "several workers w
 stashpad decide "Tabs for indentation" --why "the linter wants them" --id indent-style --by "the team"
 ```
 
-Without `--id` the id comes from the choice (`decision-we-use-postgres-for-the-main`). The other `save` options
-(`--source-ref`, `--source-type`, `--supersedes`, `--files`, `--expires`) work too; a person's decision is stored right
-away, an agent's waits for review.
+Without `--id` the id comes from the choice (`decision-we-use-postgres-for-the-main`). A choice with no Latin words
+or digits gets the day instead: `decision-2026-11-13`, then `decision-2026-11-13-2`, and the command prints a tip
+about `--id`. The other `save` options (`--source-ref`, `--source-type`, `--supersedes`, `--files`, `--expires`)
+work too; a person's decision is stored right away, an agent's waits for review.
 
 ## Files a memory is about (anchors.json)
 
