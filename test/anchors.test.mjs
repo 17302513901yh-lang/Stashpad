@@ -64,11 +64,16 @@ test("stored paths are checked strictly", () => {
   assert.equal(cleanPath("./src//billing/"), "src/billing/");
 });
 
-test("a link that points out of the project is never read", () => {
+test("a link that points out of the project is never read", (t) => {
   const { root } = project();
   const outside = mkdtempSync(join(tmpdir(), "stashpad-outside-"));
   writeFileSync(join(outside, "secret.txt"), "not yours\n");
-  symlinkSync(join(outside, "secret.txt"), join(root, "src", "link.txt"));
+  try {
+    symlinkSync(join(outside, "secret.txt"), join(root, "src", "link.txt"));
+  } catch {
+    t.skip("symbolic links are not available on this system");
+    return;
+  }
   assert.match(locate(root, "src/link.txt").refused, /outside the project/);
 });
 
