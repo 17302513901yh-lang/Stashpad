@@ -149,6 +149,23 @@ test("a wrong option value is a usage error, a store problem stays 1", async () 
   assert.equal(await run(["get", "nothing-here", "--dir", dir], missing.io), 1);
 });
 
+test("number options accept plain digits only, not what Number() coerces", async () => {
+  const dir = freshDir();
+  const cases = [
+    [["ui", "--port", "", "--dir", dir], /--port must be a whole number/],
+    [["ui", "--port", "1e1", "--dir", dir], /--port must be a whole number/],
+    [["search", "x", "--limit", "0x5", "--dir", dir], /--limit must be a whole number/],
+    [["entities", "--limit", " 3 ", "--dir", dir], /--limit must be a whole number/],
+    [["brief", "--max-chars", "1e3", "--dir", dir], /--max-chars must be a whole number/],
+    [["handoff", "leave", "--text", "hi", "--expires-days", "1e1", "--dir", dir], /expires-days must be a whole number/],
+  ];
+  for (const [args, message] of cases) {
+    const { io, err } = harness();
+    assert.equal(await run(args, io), 2, args.join(" "));
+    assert.match(err.join("\n"), message);
+  }
+});
+
 test("--help prints usage and exits 0", async () => {
   const { io, out } = harness();
   assert.equal(await run(["--help"], io), 0);

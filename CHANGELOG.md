@@ -16,6 +16,8 @@
 
 - **A wrong option value exits 2, as the help says:** a bad `--signal`, `--expires-days`, `--kind` or `--source-type` is refused before the store is read, while real store problems keep exit code 1. Thanks to @bfs2021! (#74, #83)
 
+- **Number options accept plain digits only:** `--port`, `--limit`, `--max-chars` and `--expires-days` were read with `Number(...)`, so `""` became 0 (and `ui` started on a system-chosen port), `1e1` became 10, `0x5` became 5 and `" 3 "` was silently trimmed. Each option now tests the text with `/^[0-9]+$/` first, the way `audit --limit` already did, and refuses anything else with its usual usage error. `shown --limit` is checked before the log is read, so a bad value is refused even when nothing was shown yet. Valid values, and `--port 0`, work as before. Thanks to @ghozali25! (#70, #85)
+
 ## 0.4.0
 
 Local memory upgrades (file anchors, decisions with their reasons, once-per-session recall, fenced output, stronger secret checks) and a round of fixes from contributors. The tool contract changed: `stashpad_save` takes the optional arguments `files`, `why` and `rejected`; existing calls work as before.
