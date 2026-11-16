@@ -9,7 +9,7 @@ import { decisionBody, decisionId, decisionLine, parseDecision } from "../src/de
 import { handleMessage } from "../src/mcp.mjs";
 import { parseMemory } from "../src/memory-format.mjs";
 import { recall } from "../src/recall.mjs";
-import { readMemory, saveMemory } from "../src/store.mjs";
+import { readMemory, saveMemory, todayIso } from "../src/store.mjs";
 
 const fresh = () => join(mkdtempSync(join(tmpdir(), "stashpad-decide-")), "s");
 
@@ -29,6 +29,30 @@ test("the decision layout round-trips", () => {
   assert.throws(() => decisionBody({ choice: "x", why: "two\nlines" }), /one line/);
   assert.equal(decisionId("We use Postgres, not SQLite!"), "decision-we-use-postgres-not-sqlite");
   assert.equal(decisionId("Ship on Friday", (id) => id === "decision-ship-on-friday"), "decision-ship-on-friday-2");
+  const today = todayIso();
+  assert.equal(decisionId("我们使用数据库"), `decision-${today}`);
+  assert.equal(decisionId("私たちはデータベースを使います", (id) => id === `decision-${today}`), `decision-${today}-2`);
+  assert.equal(decisionId("نستخدم قاعدة بيانات"), `decision-${today}`);
+  assert.equal(decisionId("我们使用 Postgres"), "decision-postgres");
+  assert.equal(decisionId("Postgres 是我们的选择"), "decision-postgres");
+  assert.equal(decisionId("2026 年的计划"), "decision-2026");
+});
+
+test("a choice without Latin words gets a dated id and a tip about --id", async () => {
+  const dir = fresh();
+  const today = todayIso();
+  const first = await cli("decide", "我们使用数据库", "--why", "the team agreed", "--dir", dir);
+  assert.equal(first.code, 0, first.err);
+  assert.match(first.out, new RegExp(`Saved decision-${today} to`));
+  assert.match(first.out, /Tip: give it a name you can remember with --id <id>\./);
+  const second = await cli("decide", "私たちはデータベースを使います", "--why", "the team agreed", "--dir", dir);
+  assert.equal(second.code, 0, second.err);
+  assert.match(second.out, new RegExp(`Saved decision-${today}-2 to`));
+  readMemory(dir, `decision-${today}-2`);
+  const named = await cli("decide", "Мы используем базу данных", "--why", "the team agreed", "--id", "db-language", "--dir", dir);
+  assert.equal(named.code, 0, named.err);
+  assert.match(named.out, /Saved db-language to/);
+  assert.doesNotMatch(named.out, /Tip:/);
 });
 
 test("stashpad decide saves a decision memory with the fixed layout", async () => {

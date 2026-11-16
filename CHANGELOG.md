@@ -16,6 +16,12 @@
 
 - **A wrong option value exits 2, as the help says:** a bad `--signal`, `--expires-days`, `--kind` or `--source-type` is refused before the store is read, while real store problems keep exit code 1. Thanks to @bfs2021! (#74, #83)
 
+- **Number options accept plain digits only:** `--port`, `--limit`, `--max-chars` and `--expires-days` were read with `Number(...)`, so `""` became 0 (and `ui` started on a system-chosen port), `1e1` became 10, `0x5` became 5 and `" 3 "` was silently trimmed. Each option now tests the text with `/^[0-9]+$/` first, the way `audit --limit` already did, and refuses anything else with its usual usage error. `shown --limit` is checked before the log is read, so a bad value is refused even when nothing was shown yet. Valid values, and `--port 0`, work as before. Thanks to @ghozali25! (#70, #85)
+
+- **A `decide` choice with no Latin words gets a dated id:** a choice in Chinese, Japanese, Russian or Arabic used to become `decision-note`, then `decision-note-2`, and so on. It now gets `decision-<day>` (then `-2`, `-3`) and the command prints a tip about `--id`. Choices with a Latin word or number keep their ids, and `--id` still wins. Thanks to @bfs2021! (#72, #86)
+
+- **`stashpad misses` suggests the closest word first:** the close words were listed in the order they were first seen in the memories, so `stagin` got the hint `synonym add stagin stage` although `staging` is one edit closer. They are now sorted by edit distance, then shared prefix, then alphabetically, so the hint names the best match and is the same on every run. Thanks to @bfs2021! (#31, #90)
+
 ## 0.4.0
 
 Local memory upgrades (file anchors, decisions with their reasons, once-per-session recall, fenced output, stronger secret checks) and a round of fixes from contributors. The tool contract changed: `stashpad_save` takes the optional arguments `files`, `why` and `rejected`; existing calls work as before.

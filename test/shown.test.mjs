@@ -59,6 +59,15 @@ test("MCP reads and the read commands are logged too; stashpad shown reports and
   assert.equal(await run(["shown", "--since", "yesterday", "--dir", dir], harness().io), 2);
 });
 
+test("shown refuses a non-digit --limit even when the log is empty", async () => {
+  const dir = fresh();
+  const err = [];
+  const io = { stdout: () => {}, stderr: (s) => err.push(s), env: {}, cwd: tmpdir(), readStdin: async () => "" };
+  assert.equal(await run(["shown", "--limit", "abc", "--dir", dir], io), 2);
+  assert.match(err.join("\n"), /--limit must be a whole number from 1 to 1000/);
+  assert.equal(await run(["shown", "--limit", "5", "--dir", dir], io), 0);
+});
+
 test("lint names agent memories nothing showed for 90 days, once the log has run that long", () => {
   const dir = fresh();
   for (const id of ["unused-note", "used-note"]) {
