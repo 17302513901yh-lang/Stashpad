@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **`stashpad recall` gives the same memories as the prompt hook:** it now reads the project store and the global store, project matches first, up to three in total and never the same memory twice, so a global memory the agent would get is no longer answered with "No clear match.". `--json` adds a `stores` field that says where each hit came from, and `--global` still reads only the global store. Thanks to @17302513901yh-lang! (#48, #93)
+
 - **Language names keep their symbols in search:** `C++`, `C#` and `F#` are indexed as one token instead of being cut to a single letter, and each stays distinct from the others. A standalone capital letter such as `R` is searchable too, while `A` and `I` stay ordinary words. camelCase, accents, CJK pairs and plural folding work as before. Thanks to @bfs2021! (#76, #81)
 
 - **Feedback notes and handoff cancel reasons are checked for secrets:** both are free text that is written to the store, but they skipped the `findSecrets()` guard used everywhere else. A note or reason holding a key or token is now refused before anything is written (so `feedback.jsonl` stays untouched even with `--signal wrong`, and a refused cancel leaves the handoff open). Notes and reasons without secrets work as before. Thanks to @17302513901yh-lang! (#34, #67)
