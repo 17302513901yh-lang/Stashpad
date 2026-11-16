@@ -209,7 +209,6 @@ export function defaultIo() {
   };
 }
 
-
 // Number options take plain digits only. Number() alone is not a check:
 // Number("") is 0, Number("1e1") is 10, Number("0x5") is 5 and " 3 " is
 // trimmed, so the raw text is tested before it is parsed.
@@ -217,9 +216,55 @@ function isDigitsOnly(text) {
   return /^[0-9]+$/.test(text);
 }
 
+// A usage error is one line that says what is wrong and one line that points
+// at the help. Printing the whole 83-line USAGE after every mistake buried the
+// message and gave an agent 85 lines for a one-word typo (#71). The full help
+// is still printed by --help and by running with no command at all.
 function usageError(io, message) {
-  io.stderr(`${message}\n\n${USAGE}`);
+  io.stderr(`${message}\nRun "stashpad --help" for all commands.`);
   return 2;
+}
+
+// The command names, kept next to the switch below. A test checks that this
+// list and the switch's case labels stay in step, so a typo can be suggested.
+export const COMMANDS = [
+  "search", "decide", "save", "get", "entities", "about", "shown", "misses",
+  "synonym", "duplicates", "merge", "pin", "unpin", "pins", "recall", "hook",
+  "hooks", "status-line", "confirm", "anchor", "unanchor", "anchors", "forget",
+  "eval", "import", "setup", "where", "doctor", "brief", "handover", "handoff",
+  "feedback", "lint", "sync-agents", "encrypt", "decrypt", "snapshot",
+  "snapshots", "restore", "migrate", "contract", "mcp", "review", "accept",
+  "reject", "export", "ui", "audit", "history", "list",
+];
+
+// Levenshtein distance, no dependencies. A word this short is only a typo of
+// another short word; a substitution far apart is not a suggestion at all.
+function editDistance(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 3;
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    let prev = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const tmp = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = tmp;
+    }
+  }
+  return row[b.length];
+}
+
+// Name the closest command for a near miss (one or two letters off), but say
+// nothing when no command is close enough.
+function closestCommand(word) {
+  const key = word.toLowerCase();
+  let best = null;
+  let bestDistance = 3;
+  for (const name of COMMANDS) {
+    const d = editDistance(key, name);
+    if (d < bestDistance) { bestDistance = d; best = name; }
+  }
+  return bestDistance <= 2 ? best : null;
 }
 
 // Commands that act on exactly one memory. One check before the switch is less
@@ -886,7 +931,8 @@ export async function run(argv, io = defaultIo()) {
     return 0;
   }
   if (positionals.length === 0) {
-    return usageError(io, "No command given.");
+    io.stderr(`No command given.\n\n${USAGE}`);
+    return 2;
   }
 
   const [command, id] = positionals;
@@ -1134,8 +1180,11 @@ export async function run(argv, io = defaultIo()) {
         return cmdHistory(io, dir, id, values);
       case "list":
         return cmdList(io, dir, values);
-      default:
-        return usageError(io, `Unknown command "${command}".`);
+      default: {
+        const close = closestCommand(command);
+        const hint = close ? ` Did you mean "${close}"?` : "";
+        return usageError(io, `Unknown command "${command}".${hint}`);
+      }
     }
   } catch (error) {
     if (error instanceof StoreError) {
