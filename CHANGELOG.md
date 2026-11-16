@@ -2,7 +2,6 @@
 
 ## Unreleased
 
-- **A usage error is two lines, and a typo names the close command:** every usage error used to append the whole 83-line help, so the message scrolled away and an agent got 85 lines for a one-word mistake. It now prints the message and one `Run "stashpad --help" for all commands.` pointer (exit code 2 stays), and an unknown command close to a real one suggests it (`serch` → `Did you mean "search"?`, also `reveiw`, `snapshott`), while an unrelated word gets no suggestion. `--help` and running with no command still print the full help. The command list used by the suggestion is checked against the switch by a test. (#71)
 - **Language names keep their symbols in search:** `C++`, `C#` and `F#` are indexed as one token instead of being cut to a single letter, and each stays distinct from the others. A standalone capital letter such as `R` is searchable too, while `A` and `I` stay ordinary words. camelCase, accents, CJK pairs and plural folding work as before. Thanks to @bfs2021! (#76, #81)
 
 - **Feedback notes and handoff cancel reasons are checked for secrets:** both are free text that is written to the store, but they skipped the `findSecrets()` guard used everywhere else. A note or reason holding a key or token is now refused before anything is written (so `feedback.jsonl` stays untouched even with `--signal wrong`, and a refused cancel leaves the handoff open). Notes and reasons without secrets work as before. Thanks to @17302513901yh-lang! (#34, #67)
