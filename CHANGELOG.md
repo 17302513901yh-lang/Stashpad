@@ -21,6 +21,7 @@
 - **A `decide` choice with no Latin words gets a dated id:** a choice in Chinese, Japanese, Russian or Arabic used to become `decision-note`, then `decision-note-2`, and so on. It now gets `decision-<day>` (then `-2`, `-3`) and the command prints a tip about `--id`. Choices with a Latin word or number keep their ids, and `--id` still wins. Thanks to @bfs2021! (#72, #86)
 
 - **`stashpad misses` suggests the closest word first:** the close words were listed in the order they were first seen in the memories, so `stagin` got the hint `synonym add stagin stage` although `staging` is one edit closer. They are now sorted by edit distance, then shared prefix, then alphabetically, so the hint names the best match and is the same on every run. Thanks to @bfs2021! (#31, #90)
+- **`stashpad` usage errors are one line with a suggestion:** a mistyped command such as `serch` gets `Did you mean "search"?` and a pointer to `stashpad --help`, instead of the whole 83-line help. Thanks to @17302513901yh-lang! (#71, #87)
 
 ## 0.4.0
 
