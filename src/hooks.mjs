@@ -8,7 +8,7 @@ import { basename, dirname, join, relative, isAbsolute, sep } from "node:path";
 import { gitRoot } from "./locate.mjs";
 import { buildBrief, DEFAULT_BRIEF_CHARS } from "./brief.mjs";
 import { createHandoff, validBranch } from "./handoff.mjs";
-import { recall } from "./recall.mjs";
+import { recallBoth } from "./recall.mjs";
 import { readPins } from "./pins.mjs";
 import { fence, redactSecrets } from "./security.mjs";
 import { givenIds, listSessions, sessionKey, updateSession } from "./sessions.mjs";
@@ -282,7 +282,13 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
       }
       case "prompt": {
         // Memories this session already got from this hook are not pasted again.
-        const local = recall(dir, input.prompt ?? "", { exclude: [...readPins(dir), ...safeGiven(dir, input)], cwd, anchorMoves: false });
+        // Project and global recall are combined in one place, shared with
+        // `stashpad recall` (#48), so the command line agrees with the hook.
+        const { local, wide, extra, text } = recallBoth(dir, input.prompt ?? "", {
+          cwd, globalDir: global, anchorMoves: false,
+          excludeLocal: [...readPins(dir), ...safeGiven(dir, input)],
+          excludeGlobal: global ? [...readPins(global), ...safeGiven(global, input)] : [],
+        });
         note(dir, input, (s) => {
           given(s, local.hits);
           remember(s, input);
@@ -291,14 +297,12 @@ export function runHook(dir, event, input = {}, { maxChars = DEFAULT_BRIEF_CHARS
           if (result.hits.length) logShown(store, { event: "prompt", ids: result.hits, chars: out, session: input.session_id });
         };
         if (!global) {
-          const out = fence(local.text);
+          const out = fence(text);
           shown(dir, local, out.length);
           return out;
         }
-        const wide = recall(global, input.prompt ?? "", { exclude: [...readPins(global), ...safeGiven(global, input)], limit: Math.max(0, 3 - local.hits.length), cwd, checkFiles: false });
         note(global, input, (s) => given(s, wide.hits));
-        const extra = wide.text.split("\n").slice(2).join("\n");
-        const out = !wide.text ? fence(local.text) : !local.text ? fence(wide.text.replace("Stashpad memories", "Stashpad global memories")) : fence(`${local.text}\n${extra}`);
+        const out = fence(text);
         shown(dir, local, out.length - (wide.text ? extra.length : 0));
         shown(global, wide, extra.length);
         return out;

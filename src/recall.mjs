@@ -44,6 +44,35 @@ function safeCheck(dir, id, anchors, context) {
   }
 }
 
+// The prompt hook and `stashpad recall` must answer with the same memories (#48).
+// Both call this: project matches come first, global ones fill the remaining places
+// up to the same limit of three, and a memory is never listed twice. The global
+// store's memories have no project files, so they are recalled without anchor
+// checks. `local` / `wide` / `extra` are returned so the hook can keep its own
+// session bookkeeping and "shown" log for each store.
+export function recallBoth(dir, prompt, {
+  cwd = process.cwd(), globalDir = null, limit = 3,
+  excludeLocal = [], excludeGlobal = [],
+  anchorMoves = true, maxChars = DEFAULT_RECALL_CHARS,
+} = {}) {
+  const local = recall(dir, prompt, { exclude: excludeLocal, cwd, anchorMoves, limit, maxChars });
+  const wide = globalDir
+    ? recall(globalDir, prompt, {
+      exclude: [...excludeGlobal, ...local.hits],
+      limit: Math.max(0, limit - local.hits.length),
+      cwd, checkFiles: false, maxChars,
+    })
+    : { text: "", hits: [] };
+  const extra = wide.text ? wide.text.split("\n").slice(2).join("\n") : "";
+  const text = !wide.text ? local.text
+    : !local.text ? wide.text.replace("Stashpad memories", "Stashpad global memories")
+      : `${local.text}\n${extra}`;
+  const stores = {};
+  for (const id of local.hits) stores[id] = "project";
+  for (const id of wide.hits) stores[id] = "global";
+  return { local, wide, extra, text, hits: [...local.hits, ...wide.hits], stores };
+}
+
 // A match is clear when it shares at least two meaningful words with the prompt (synonyms count
 // only as a bonus), or one rare-looking word when the prompt itself is very short.
 // anchorMoves: false (the hooks) skips the search for moved files; lint and `stashpad anchors` do it.
