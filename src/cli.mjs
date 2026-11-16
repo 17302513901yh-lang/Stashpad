@@ -1,5 +1,5 @@
 // Command line interface for Stashpad. Returns an exit code; never calls process.exit itself.
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { KINDS, TRUST_BY_SOURCE, isValidDay, parseMemory } from "./memory-format.mjs";
 import { DATA_LABEL, defuse, defuseValues, fence, findInstructionLikeText } from "./security.mjs";
@@ -17,7 +17,7 @@ import { encryptionOf } from "./vault.mjs";
 import { checkClientLaunch, checkPathNode } from "./clientcheck.mjs";
 import { HOOK_EVENTS, parseEvent, runHook } from "./hooks.mjs";
 import { pinMemory, readPins, unpinMemory } from "./pins.mjs";
-import { recall } from "./recall.mjs";
+import { recallBoth } from "./recall.mjs";
 import { globalStore, locateStore } from "./locate.mjs";
 import { addSynonyms, logMiss, missReport } from "./misses.mjs";
 import { runDoctor } from "./doctor.mjs";
@@ -1038,10 +1038,17 @@ export async function run(argv, io = defaultIo()) {
       case "recall": {
         const words = positionals.slice(1).join(" ").trim();
         if (!words) return usageError(io, 'recall needs words, for example: stashpad recall "add a database migration"');
-        const result = recall(dir, words, { cwd: io.cwd });
-        const out = values.json ? JSON.stringify(defuseValues(result)) : result.text ? fence(result.text) : "No clear match.";
+        // The prompt hook reads both stores; the command must give the same answer
+        // (#48). `--global` keeps its meaning: only the global store, no project one.
+        const candidate = values.global ? null : globalStore(io.env);
+        const globalDir = candidate && existsSync(candidate) && resolve(candidate) !== resolve(dir) ? candidate : null;
+        const result = recallBoth(dir, words, { cwd: io.cwd, globalDir });
+        const out = values.json
+          ? JSON.stringify(defuseValues({ text: result.text, hits: result.hits, stores: result.stores }))
+          : result.text ? fence(result.text) : "No clear match.";
         io.stdout(out);
-        if (result.hits.length) logShown(dir, { event: "cli recall", ids: result.hits, chars: out.length });
+        if (result.local.hits.length) logShown(dir, { event: "cli recall", ids: result.local.hits, chars: out.length });
+        if (globalDir && result.wide.hits.length) logShown(globalDir, { event: "cli recall", ids: result.wide.hits, chars: out.length });
         return 0;
       }
       case "hook": {

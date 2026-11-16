@@ -59,13 +59,15 @@ What Stashpad does **not** do: semantic search (word search finds about 2 of 3 r
 
 ```bash
 stashpad brief                  # short summary: pinned rules, newest memories, open handoff
-stashpad recall "add a postgres migration"    # the few memories that clearly match a request
+stashpad recall "add a postgres migration"    # the few memories that clearly match a request (project first, then global)
 stashpad decide "We use Postgres" --why "several workers write at once" --rejected SQLite   # a decision with its reason
 stashpad handoff leave --text "Half done: auth. Next: tests."   # a note the next session reads once
 stashpad sync-agents AGENTS.md  # put the brief in a file agents already read (no MCP needed)
 ```
 
 With the Claude Code plugin these run as hooks: at session start and after compaction, on each prompt (each memory once per session), and before compaction and at session end (an automatic handoff with the branch and uncommitted files; a session that crashed is noticed at the next start). Pause them per project with `stashpad hooks off`; add `stashpad setup claude-code --status-line` for a status bar line. See [docs/HOOKS.md](docs/HOOKS.md). Agents: read [AGENT-GUIDE.md](AGENT-GUIDE.md).
+
+`stashpad recall` gives the same memories the prompt hook would add: matches from the project store first, then from the global store, up to three in total and never the same memory twice. `--json` adds a `stores` object that says which store each hit came from (`project` or `global`). `--global` still means "only the global store".
 
 ## Develop
 
