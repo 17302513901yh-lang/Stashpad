@@ -18,6 +18,34 @@ test("a built-in synonym finds a note, and an exact word still ranks first", () 
   assert.deepEqual(ids, ["exact", "other"]);
 });
 
+test("German and French built-in synonyms find an English note (#4)", () => {
+  const dir = fresh();
+  put(dir, "pw", "The password manager is shared by the team.");
+  put(dir, "db", "The database holds the production records.");
+  put(dir, "err", "An error stopped the nightly build.");
+  put(dir, "mem", "Keep a short memory of the decision.");
+  // German
+  assert.ok(searchMemories(dir, "Passwort").results.some((r) => r.id === "pw"));
+  assert.ok(searchMemories(dir, "Datenbank").results.some((r) => r.id === "db"));
+  assert.ok(searchMemories(dir, "Fehler").results.some((r) => r.id === "err"));
+  // French
+  assert.ok(searchMemories(dir, "erreur").results.some((r) => r.id === "err"));
+  // Accents are folded by tokenize: "mémoire" and bare "memoire" both work.
+  assert.ok(searchMemories(dir, "mémoire").results.some((r) => r.id === "mem"));
+  assert.ok(searchMemories(dir, "memoire").results.some((r) => r.id === "mem"));
+  // An unrelated word must not match through a synonym.
+  assert.equal(searchMemories(dir, "zebra").results.length, 0);
+});
+
+test("a common French/Dutch word is not turned into a synonym by a phrase (#4)", () => {
+  const dir = fresh();
+  put(dir, "pw", "The password manager is shared by the team.");
+  // "mot de passe" is three words; if it were added as one group member, "de"
+  // would become a synonym of "password" and match this note. It must not.
+  assert.equal(searchMemories(dir, "de").results.length, 0);
+  assert.equal(searchMemories(dir, "mot").results.length, 0);
+});
+
 test("the store can add its own groups in synonyms.json", () => {
   const dir = fresh();
   put(dir, "ship", "Production uses blue green rollout every Tuesday.");

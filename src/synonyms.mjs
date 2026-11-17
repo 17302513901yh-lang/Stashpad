@@ -1,7 +1,10 @@
 // Query expansion with groups of words that mean nearly the same. A match through a synonym counts
 // half as much as an exact match, so exact words still rank first. The built-in groups are small and
-// general (English and Dutch). A person can add their own in <store>/synonyms.json:
+// general (English, Dutch, German and French). A person can add their own in <store>/synonyms.json:
 //   { "groups": [["db", "database", "datastore"], ["pr", "pull request"]] }
+// Only single words belong here: buildSynonymMap() relates EVERY term of an entry to every other
+// member of its group, so a phrase such as "mot de passe" would also make the common word "de" a
+// synonym of "password" and produce false hits (#4). Accents are folded by tokenize().
 import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { stem, tokenize } from "./search.mjs";
@@ -12,18 +15,18 @@ export const MAX_GROUPS = 500;
 export const MAX_GROUP_SIZE = 20;
 
 export const BUILTIN_GROUPS = [
-  ["password", "passwd", "credential", "wachtwoord", "sleutel"],
-  ["database", "db", "datastore"],
-  ["note", "notitie", "memory"],
-  ["delete", "remove", "forget", "verwijder"],
-  ["deploy", "release", "publish", "uitrollen", "uitrol", "uitgerold"],
-  ["error", "bug", "failure", "fout"],
-  ["theme", "color", "colour", "kleur"],
-  ["language", "taal"],
-  ["editor", "ide"],
+  ["password", "passwd", "credential", "wachtwoord", "sleutel", "passwort", "kennwort"],
+  ["database", "db", "datastore", "datenbank"],
+  ["note", "notitie", "memory", "notiz", "memoire"],
+  ["delete", "remove", "forget", "verwijder", "loschen", "supprimer"],
+  ["deploy", "release", "publish", "uitrollen", "uitrol", "uitgerold", "bereitstellen", "deployer"],
+  ["error", "bug", "failure", "fout", "fehler", "erreur"],
+  ["theme", "color", "colour", "kleur", "farbe", "couleur"],
+  ["language", "taal", "sprache", "langue"],
+  ["editor", "ide", "editeur"],
   ["agent", "assistant", "assistent"],
-  ["secret", "geheim"],
-  ["windows", "macos", "linux", "platform", "platforms"],
+  ["secret", "geheim", "geheimnis"],
+  ["windows", "macos", "linux", "platform", "platforms", "plattform", "plateforme"],
 ];
 
 // Words of a group, as the search sees them: lowercase and stemmed. A phrase becomes several words.
