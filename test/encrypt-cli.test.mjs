@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,6 +16,27 @@ function harness(cwd, env = {}) {
     out, err,
     io: { cwd, env, stdout: (s) => out.push(s), stderr: (s) => err.push(s), readStdin: async () => "" },
   };
+}
+
+// The read path currently falls back to process.env. Isolate list in a child
+// with an empty process environment, without reading or changing the parent's
+// credentials. Still call run() with io.env so the positive TODO remains real.
+function isolatedList(cwd, env = {}) {
+  const cli = new URL("../src/cli.mjs", import.meta.url).href;
+  const child = spawnSync(process.execPath, ["--input-type=module", "-e", `
+    import { readFileSync } from "node:fs";
+    import { run } from ${JSON.stringify(cli)};
+    const { cwd, env } = JSON.parse(readFileSync(0, "utf8"));
+    const out = [], err = [];
+    const code = await run(["list", "--dir", cwd], {
+      cwd, env, stdout: (s) => out.push(s), stderr: (s) => err.push(s),
+      readStdin: async () => "",
+    });
+    process.stdout.write(JSON.stringify({ code, out, err }));
+  `], { env: {}, input: JSON.stringify({ cwd, env }), encoding: "utf8", timeout: 30000 });
+  assert.ifError(child.error);
+  assert.equal(child.status, 0, child.stderr);
+  return JSON.parse(child.stdout);
 }
 
 // Include paths and bytes so a no-op cannot silently add or remove a file.
@@ -59,8 +81,8 @@ test("encrypt with an io.env passphrase seals the memory and explains recovery",
 });
 
 test("list without the passphrase refuses a sealed store", async (t) => {
-  const dir = await store(t, true), missing = harness(dir);
-  assert.equal(await run(["list", "--dir", dir], missing.io), 1);
+  const dir = await store(t, true), missing = isolatedList(dir);
+  assert.equal(missing.code, 1);
   assert.match(missing.err.join("\n"), /this store is encrypted/);
   assert.deepEqual(missing.out, []);
 });
@@ -69,8 +91,8 @@ test("list without the passphrase refuses a sealed store", async (t) => {
 // https://github.com/laaielichter/Stashpad/issues/73#issuecomment-6943873461
 test("list reads a sealed store with an io.env passphrase", { todo: "read path ignores io.env (#73)" }, async (t) => {
   const dir = await store(t, true);
-  const supplied = harness(dir, { STASHPAD_PASSPHRASE: PASS });
-  assert.equal(await run(["list", "--dir", dir], supplied.io), 0);
+  const supplied = isolatedList(dir, { STASHPAD_PASSPHRASE: PASS });
+  assert.equal(supplied.code, 0);
   assert.deepEqual(supplied.err, []);
   assert.ok(supplied.out.join("\n").includes(TEXT));
 });
