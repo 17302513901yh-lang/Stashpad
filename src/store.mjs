@@ -644,7 +644,7 @@ export function readMemory(dir, id) {
 }
 
 // Reads every valid memory in the store folder. Files that break the format go to skipped.
-function readAll(dir) {
+function readAll(dir, env = process.env) {
   const entries = [];
   const skipped = [];
   if (!existsSync(dir)) return { entries, skipped };
@@ -656,7 +656,7 @@ function readAll(dir) {
       skipped.push({ file: name, reason: "symbolic link: not read" });
       continue;
     }
-    const text = readData(dir, join(dir, name));
+    const text = readData(dir, join(dir, name), env);
     const { errors } = validateMemory(text, id);
     if (errors.length > 0) {
       skipped.push({ file: name, reason: errors[0] });
@@ -682,7 +682,7 @@ function summarize(entry) {
 
 // Current memories only, unless includeEnded is true.
 export function listMemories(dir, options = {}) {
-  const { entries, skipped } = readAll(dir);
+  const { entries, skipped } = readAll(dir, options.env);
   const rows = filterEntries(entries, options).map(summarize);
   return { rows, skipped };
 }

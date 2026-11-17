@@ -565,7 +565,7 @@ function filtersFrom(values) {
 function cmdList(io, dir, values) {
   const badFilter = checkFilterValues(io, values);
   if (badFilter !== null) return badFilter;
-  const { rows, skipped } = listMemories(dir, filtersFrom(values));
+  const { rows, skipped } = listMemories(dir, { ...filtersFrom(values), env: io.env });
 
   for (const item of skipped) {
     io.stderr(`skipped ${item.file}: ${item.reason}`);

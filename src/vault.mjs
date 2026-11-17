@@ -113,10 +113,10 @@ export function keyFor(dir, env = process.env) {
 export const isSealed = (text) => typeof text === "string" && text.startsWith(SEAL_PREFIX);
 
 // Text content of a store file, opened when sealed.
-export function openText(dir, content) {
+export function openText(dir, content, env = process.env) {
   const text = Buffer.isBuffer(content) ? content.toString("utf8") : content;
   if (!isSealed(text)) return text;
-  const key = keyFor(dir);
+  const key = keyFor(dir, env);
   if (key === null) throw new StoreError(NO_MARKER);
   return openBytes(key, text.slice(SEAL_PREFIX.length)).toString("utf8");
 }
@@ -136,8 +136,8 @@ export function sealFor(dir, content, key = keyFor(dir)) {
   return SEAL_PREFIX + sealBytes(key, bytes);
 }
 
-export function readData(dir, path) {
-  return openText(dir, readFileSync(path, "utf8"));
+export function readData(dir, path, env = process.env) {
+  return openText(dir, readFileSync(path, "utf8"), env);
 }
 
 // One audit line: sealed on its own, so the log can still be appended to.
