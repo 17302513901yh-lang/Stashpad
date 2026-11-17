@@ -45,3 +45,5 @@ Each file is rewritten on its own, and reading accepts both sealed and plain fil
 ## Passphrase in a key file or the environment
 
 A key file (`STASHPAD_KEY_FILE`) that only you can read is safer than an environment variable, which other programs of the same user can sometimes see. For an MCP client, put the variable in the client's server settings (`stashpad setup` shows where).
+
+For programmatic CLI calls, `run(["list", ...], io)` reads an encrypted store using `io.env`, just like `encrypt` and `decrypt`. An explicitly empty `io.env` does not fall back to ambient credentials. Direct `listMemories(dir, { env })` calls can also supply an environment; omitting it preserves the process-environment default. This does not change environment injection for other read commands.

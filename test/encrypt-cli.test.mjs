@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "../src/cli.mjs";
@@ -18,22 +18,21 @@ function harness(cwd, env = {}) {
   };
 }
 
-// The read path currently falls back to process.env. Isolate list in a child
-// with an empty process environment, without reading or changing the parent's
-// credentials. Still call run() with io.env so the positive TODO remains real.
-function isolatedList(cwd, env = {}) {
+// Exercise injected io.env independently of ambient credentials, without reading
+// or changing the parent environment. The child only receives synthetic input.
+function isolatedList(cwd, env = {}, ambient = {}, args = []) {
   const cli = new URL("../src/cli.mjs", import.meta.url).href;
   const child = spawnSync(process.execPath, ["--input-type=module", "-e", `
     import { readFileSync } from "node:fs";
     import { run } from ${JSON.stringify(cli)};
-    const { cwd, env } = JSON.parse(readFileSync(0, "utf8"));
+    const { cwd, env, args } = JSON.parse(readFileSync(0, "utf8"));
     const out = [], err = [];
-    const code = await run(["list", "--dir", cwd], {
+    const code = await run(["list", "--dir", cwd, ...args], {
       cwd, env, stdout: (s) => out.push(s), stderr: (s) => err.push(s),
       readStdin: async () => "",
     });
     process.stdout.write(JSON.stringify({ code, out, err }));
-  `], { env: {}, input: JSON.stringify({ cwd, env }), encoding: "utf8", timeout: 30000 });
+  `], { env: ambient, input: JSON.stringify({ cwd, env, args }), encoding: "utf8", timeout: 30000 });
   assert.ifError(child.error);
   assert.equal(child.status, 0, child.stderr);
   return JSON.parse(child.stdout);
@@ -87,9 +86,7 @@ test("list without the passphrase refuses a sealed store", async (t) => {
   assert.deepEqual(missing.out, []);
 });
 
-// Known gap: the read path does not yet propagate io.env. Keep the assertion.
-// https://github.com/laaielichter/Stashpad/issues/73#issuecomment-6943873461
-test("list reads a sealed store with an io.env passphrase", { todo: "read path ignores io.env (#73)" }, async (t) => {
+test("list reads a sealed store with an io.env passphrase", async (t) => {
   const dir = await store(t, true);
   const supplied = isolatedList(dir, { STASHPAD_PASSPHRASE: PASS });
   assert.equal(supplied.code, 0);
@@ -125,5 +122,60 @@ test("decrypt --yes with the wrong passphrase fails without changing any file", 
   assert.equal(await run(["decrypt", "--yes", "--dir", dir], h.io), 1);
   assert.match(h.err.join("\n"), /wrong passphrase/);
   assert.deepEqual(h.out, []);
+  assert.deepEqual(files(dir), before);
+});
+
+
+test("list uses io.env rather than an ambient passphrase and does not mutate files", async (t) => {
+  const dir = await store(t, true), before = files(dir);
+  const ambient = { STASHPAD_PASSPHRASE: PASS };
+  for (const env of [{}, { STASHPAD_PASSPHRASE: "wrong synthetic passphrase" }]) {
+    const result = isolatedList(dir, env, ambient);
+    assert.equal(result.code, 1);
+    assert.deepEqual(result.out, []);
+    assert.match(result.err.join("\n"), env.STASHPAD_PASSPHRASE ? /wrong passphrase/ : /this store is encrypted/);
+    assert.deepEqual(files(dir), before);
+  }
+  const correct = isolatedList(dir, { STASHPAD_PASSPHRASE: PASS },
+    { STASHPAD_PASSPHRASE: "unrelated synthetic ambient passphrase" }, ["--json", "--kind", "fact"]);
+  assert.equal(correct.code, 0);
+  assert.deepEqual(correct.err, []);
+  assert.equal(JSON.parse(correct.out.join(""))[0].summary, TEXT);
+  assert.deepEqual(files(dir), before);
+});
+
+test("list accepts an io.env key file without changing the sealed store", async (t) => {
+  const dir = await store(t, true), before = files(dir);
+  const keyDir = mkdtempSync(join(tmpdir(), "stashpad-synthetic-key-"));
+  t.after(() => rmSync(keyDir, { recursive: true, force: true }));
+  const key = join(keyDir, "synthetic-key.txt");
+  writeFileSync(key, PASS + "\n");
+  const result = isolatedList(dir, { STASHPAD_KEY_FILE: key });
+  assert.equal(result.code, 0);
+  assert.deepEqual(result.err, []);
+  assert.ok(result.out.join("\n").includes(TEXT));
+  assert.deepEqual(files(dir), before);
+});
+
+test("listMemories keeps its ambient default but honors an explicit environment", async (t) => {
+  const dir = await store(t, true), before = files(dir);
+  const storeModule = new URL("../src/store.mjs", import.meta.url).href;
+  const child = spawnSync(process.execPath, ["--input-type=module", "-e", `
+    import assert from "node:assert/strict";
+    import { readFileSync } from "node:fs";
+    import { listMemories } from ${JSON.stringify(storeModule)};
+    const { dir, pass, text } = JSON.parse(readFileSync(0, "utf8"));
+    assert.equal(listMemories(dir).rows[0].summary, text);
+    assert.throws(() => listMemories(dir, { env: {} }), /this store is encrypted/);
+    assert.throws(() => listMemories(dir, { env: { STASHPAD_PASSPHRASE: "wrong synthetic passphrase" } }), /wrong passphrase/);
+    const options = { env: { STASHPAD_PASSPHRASE: pass }, kinds: ["fact"] };
+    assert.equal(listMemories(dir, options).rows[0].summary, text);
+    assert.deepEqual(listMemories(dir, { ...options, kinds: ["task"] }).rows, []);
+  `], {
+    env: { STASHPAD_PASSPHRASE: PASS }, encoding: "utf8", timeout: 30000,
+    input: JSON.stringify({ dir, pass: PASS, text: TEXT }),
+  });
+  assert.ifError(child.error);
+  assert.equal(child.status, 0, child.stderr);
   assert.deepEqual(files(dir), before);
 });
