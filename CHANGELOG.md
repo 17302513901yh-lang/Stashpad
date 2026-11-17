@@ -25,6 +25,8 @@
 - **`stashpad misses` suggests the closest word first:** the close words were listed in the order they were first seen in the memories, so `stagin` got the hint `synonym add stagin stage` although `staging` is one edit closer. They are now sorted by edit distance, then shared prefix, then alphabetically, so the hint names the best match and is the same on every run. Thanks to @bfs2021! (#31, #90)
 - **`stashpad` usage errors are one line with a suggestion:** a mistyped command such as `serch` gets `Did you mean "search"?` and a pointer to `stashpad --help`, instead of the whole 83-line help. Thanks to @17302513901yh-lang! (#71, #87)
 
+- **German and French words find English notes through the built-in synonyms:** `Passwort`, `Datenbank`, `Fehler`, `erreur`, `löschen`, `supprimer`, `Sprache`, `langue` and a few more join the existing groups, with accents folded as usual. Multi-word phrases such as `mot de passe` are left out on purpose, so `de` never becomes a synonym of `password`. Thanks to @17302513901yh-lang! (#4, #96)
+
 ## 0.4.0
 
 Local memory upgrades (file anchors, decisions with their reasons, once-per-session recall, fenced output, stronger secret checks) and a round of fixes from contributors. The tool contract changed: `stashpad_save` takes the optional arguments `files`, `why` and `rejected`; existing calls work as before.
