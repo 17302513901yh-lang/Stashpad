@@ -8,6 +8,7 @@
   <a href="https://github.com/laaielichter/stashpad/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/laaielichter/stashpad/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://www.npmjs.com/package/stashpad"><img alt="npm" src="https://img.shields.io/npm/v/stashpad"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <a href="https://github.com/laaielichter/Stashpad/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/laaielichter/Stashpad?style=social"></a>
 </p>
 <p align="center">
   <img src="https://raw.githubusercontent.com/laaielichter/stashpad/main/docs/demo/demo.svg" alt="Stashpad in a terminal: a person saves and pins a decision, an agent's note waits for review, recall finds both for a request, and the brief brings the pinned rule back after compaction" width="760">
@@ -208,7 +209,9 @@ then `/plugin install reverseport@reverseport`, `stashpad@reverseport` or `agent
 
 Ideas, bug reports and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md), the [good first issues](https://github.com/laaielichter/stashpad/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) and [Discussions](https://github.com/laaielichter/stashpad/discussions). Security problems: [SECURITY.md](SECURITY.md).
 
-If Stashpad is useful to you, a GitHub star is welcome — entirely optional.
+If Stashpad is useful to you, a ⭐ on [GitHub](https://github.com/laaielichter/Stashpad) helps other people find it.
+
+Thanks to everyone who has contributed: [@17302513901yh-lang](https://github.com/17302513901yh-lang), [@jay23606](https://github.com/jay23606), [@Daiyuanranfeng](https://github.com/Daiyuanranfeng), [@sunxiuguo](https://github.com/sunxiuguo), [@harshitNegi0001](https://github.com/harshitNegi0001) and [@ghozali25](https://github.com/ghozali25).
 
 ## License
 
