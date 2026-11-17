@@ -26,6 +26,7 @@
 - **`stashpad` usage errors are one line with a suggestion:** a mistyped command such as `serch` gets `Did you mean "search"?` and a pointer to `stashpad --help`, instead of the whole 83-line help. Thanks to @17302513901yh-lang! (#71, #87)
 
 - **German and French words find English notes through the built-in synonyms:** `Passwort`, `Datenbank`, `Fehler`, `erreur`, `löschen`, `supprimer`, `Sprache`, `langue` and a few more join the existing groups, with accents folded as usual. Multi-word phrases such as `mot de passe` are left out on purpose, so `de` never becomes a synonym of `password`. Thanks to @17302513901yh-lang! (#4, #96)
+- Listing encrypted memories honors the environment passed to the program (`io.env`), as encrypt and decrypt already did, so a key supplied that way is found. Thanks to @sunxiuguo! (#73, #100)
 
 ## 0.4.0
 
