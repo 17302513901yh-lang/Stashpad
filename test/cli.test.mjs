@@ -344,3 +344,51 @@ test("one-id commands refuse a second id before changing anything (#69)", async 
   const search = harness();
   assert.equal(await run(["search", "test", "project", "--dir", many], search.io), 0, "search still takes several words");
 });
+
+// #75 (part 1): accept, reject, confirm, pin, unpin and merge used to ignore
+// --json and print a sentence instead. Each must now print one JSON object.
+test("write commands print one JSON object with --json (#75)", async () => {
+  const dir = freshDir();
+  const runJson = async (args) => {
+    const h = harness();
+    assert.equal(await run([...args, "--json"], h.io), 0, `${args.join(" ")}: ${h.err.join("\n")}`);
+    assert.equal(h.out.length, 1, `${args.join(" ")} prints one line on stdout`);
+    return JSON.parse(h.out[0]);
+  };
+
+  // Two agent-written memories wait in pending/ until a person decides.
+  assert.equal(await run(saveArgs(dir, "note-a", ["--source-type", "agent", "--text", "The build runs on Windows with Node 22."]), harness().io), 0);
+  assert.equal(await run(saveArgs(dir, "note-b", ["--source-type", "agent", "--text", "Tests use the built-in node test runner."]), harness().io), 0);
+  const accepted = await runJson(["accept", "note-a", "--dir", dir]);
+  assert.equal(accepted.status, "accepted");
+  assert.equal(accepted.id, "note-a");
+  assert.ok(accepted.path);
+  const rejected = await runJson(["reject", "note-b", "--dir", dir, "--reason", "old"]);
+  assert.equal(rejected.status, "rejected");
+  assert.equal(rejected.id, "note-b");
+  assert.ok(rejected.path);
+
+  assert.equal(await run(saveArgs(dir, "db-choice", ["--text", "We use PostgreSQL for the shared board."]), harness().io), 0);
+  assert.equal(await run(saveArgs(dir, "cli-style", ["--text", "The command line prints one short line per answer."]), harness().io), 0);
+  const confirmed = await runJson(["confirm", "db-choice", "--dir", dir]);
+  assert.equal(confirmed.status, "confirmed");
+  assert.equal(confirmed.id, "db-choice");
+  assert.equal(typeof confirmed.changed, "boolean"); // false when it was confirmed earlier today
+  const pinned = await runJson(["pin", "db-choice", "--dir", dir]);
+  assert.equal(pinned.status, "pinned");
+  assert.equal(pinned.changed, true);
+  assert.equal(pinned.count, 1);
+  const unpinned = await runJson(["unpin", "db-choice", "--dir", dir]);
+  assert.equal(unpinned.status, "unpinned");
+  assert.equal(unpinned.changed, true);
+  assert.equal(unpinned.count, 0);
+  const merged = await runJson(["merge", "db-choice", "cli-style", "--dir", dir]);
+  assert.equal(merged.status, "merged");
+  assert.equal(merged.keep, "db-choice");
+  assert.deepEqual(merged.ended, ["cli-style"]);
+
+  // Without --json the sentences are unchanged.
+  const plain = harness();
+  assert.equal(await run(["pin", "db-choice", "--dir", dir], plain.io), 0);
+  assert.match(plain.out.join("\n"), /^Pinned db-choice \(1 pinned\)\.$/m);
+});

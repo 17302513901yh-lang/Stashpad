@@ -366,21 +366,30 @@ function cmdReview(io, dir, values) {
   return 0;
 }
 
-function cmdAccept(io, dir, id) {
+// Commands that change the store: with --json they print exactly one object,
+// with the same facts the sentence has. Nothing else goes to stdout (#75).
+function cmdAccept(io, dir, id, values) {
   const path = acceptPending(dir, id);
   if (id.startsWith("forget-")) {
-    io.stdout(`Ended ${id.slice("forget-".length)}. It stays in the store with its end date.`);
+    if (values.json) io.stdout(JSON.stringify(defuseValues({ status: "ended", id, target: id.slice("forget-".length) })));
+    else io.stdout(`Ended ${id.slice("forget-".length)}. It stays in the store with its end date.`);
   } else {
-    io.stdout(`Accepted ${id} into the store: ${path}`);
-    const status = checkAnchors(dir, id, { root: projectRoot(dir, io.cwd), env: io.env });
-    if (status) io.stdout(`Anchored to: ${status.files.map((f) => f.path).join(", ")}`);
+    const anchored = checkAnchors(dir, id, { root: projectRoot(dir, io.cwd), env: io.env });
+    if (values.json) {
+      io.stdout(JSON.stringify(defuseValues({ status: "accepted", id, path,
+        ...(anchored ? { anchored: anchored.files.map((f) => f.path) } : {}) })));
+    } else {
+      io.stdout(`Accepted ${id} into the store: ${path}`);
+      if (anchored) io.stdout(`Anchored to: ${anchored.files.map((f) => f.path).join(", ")}`);
+    }
   }
   return 0;
 }
 
 function cmdReject(io, dir, id, values) {
   const path = rejectPending(dir, id, values.reason ?? null);
-  io.stdout(`Rejected ${id}. Kept for the record in ${path}`);
+  if (values.json) io.stdout(JSON.stringify(defuseValues({ status: "rejected", id, path })));
+  else io.stdout(`Rejected ${id}. Kept for the record in ${path}`);
   return 0;
 }
 
@@ -1019,14 +1028,16 @@ export async function run(argv, io = defaultIo()) {
         const drop = positionals.slice(2);
         if (!id || drop.length === 0) return usageError(io, "merge needs the id to keep and at least one to end, for example: stashpad merge db-choice db-choice-copy");
         const done = mergeMemories(dir, id, drop);
-        io.stdout(`Kept ${done.keep}; ended ${done.ended.join(", ")}. Their history stays in the store.`);
+        if (values.json) io.stdout(JSON.stringify(defuseValues({ status: "merged", keep: done.keep, ended: done.ended })));
+        else io.stdout(`Kept ${done.keep}; ended ${done.ended.join(", ")}. Their history stays in the store.`);
         return 0;
       }
       case "pin":
       case "unpin": {
         if (!id) return usageError(io, `${command} needs an id, for example: stashpad ${command} no-force-push`);
         const done = command === "pin" ? pinMemory(dir, id) : unpinMemory(dir, id);
-        io.stdout(done.changed ? `${command === "pin" ? "Pinned" : "Unpinned"} ${id} (${done.count} pinned).` : `Nothing changed (${done.count} pinned).`);
+        if (values.json) io.stdout(JSON.stringify(defuseValues({ status: command === "pin" ? "pinned" : "unpinned", id, changed: done.changed, count: done.count })));
+        else io.stdout(done.changed ? `${command === "pin" ? "Pinned" : "Unpinned"} ${id} (${done.count} pinned).` : `Nothing changed (${done.count} pinned).`);
         return 0;
       }
       case "pins": {
@@ -1087,10 +1098,16 @@ export async function run(argv, io = defaultIo()) {
       case "confirm": {
         if (!id) return usageError(io, "confirm needs an id, for example: stashpad confirm db-choice");
         const done = confirmMemory(dir, id);
-        io.stdout(done.changed ? `Confirmed ${id} as still true today.` : `${id} was already confirmed today.`);
         const again = reanchor(dir, id, projectRoot(dir, io.cwd), io.env);
-        if (again && (again.updated.length || again.dropped.length)) {
-          io.stdout(`Re-anchored ${id} to the files as they are now${again.updated.length ? ` (updated: ${again.updated.join(", ")})` : ""}${again.dropped.length ? `; dropped, gone: ${again.dropped.join(", ")}` : ""}.`);
+        const reanchored = again && (again.updated.length || again.dropped.length) ? { updated: again.updated, dropped: again.dropped } : null;
+        if (values.json) {
+          io.stdout(JSON.stringify(defuseValues({ status: "confirmed", id, changed: done.changed,
+            ...(reanchored ? { reanchored } : {}) })));
+        } else {
+          io.stdout(done.changed ? `Confirmed ${id} as still true today.` : `${id} was already confirmed today.`);
+          if (reanchored) {
+            io.stdout(`Re-anchored ${id} to the files as they are now${reanchored.updated.length ? ` (updated: ${reanchored.updated.join(", ")})` : ""}${reanchored.dropped.length ? `; dropped, gone: ${reanchored.dropped.join(", ")}` : ""}.`);
+          }
         }
         return 0;
       }
@@ -1171,7 +1188,7 @@ export async function run(argv, io = defaultIo()) {
         return cmdReview(io, dir, values);
       case "accept":
         if (!id) return usageError(io, "accept needs an id, for example: stashpad accept agent-note");
-        return cmdAccept(io, dir, id);
+        return cmdAccept(io, dir, id, values);
       case "reject":
         if (!id) return usageError(io, "reject needs an id, for example: stashpad reject agent-note");
         return cmdReject(io, dir, id, values);
