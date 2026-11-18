@@ -21,7 +21,17 @@ and a person decides what is kept. Read this once, then use the table below.
 If your client does not run MCP, use the CLI. The commands are:
 `search`, `get`, `save`, `decide`, `forget`, `history`, `review`, `accept`, `reject`, `audit`.
 `eval` checks the tool itself. `import` is for a person: it queues an export for review.
-Add `--json` for machine-readable output.
+Add `--json` for machine-readable output. Commands that change the store print exactly one JSON object on stdout (warnings stay on stderr); the keys are:
+
+| command | object |
+|---|---|
+| `accept` | `{status:"accepted", id, path, anchored?}`; an ending request gives `{status:"ended", id, target}` |
+| `reject` | `{status:"rejected", id, path}` |
+| `confirm` | `{status:"confirmed", id, changed, reanchored?}` |
+| `pin` / `unpin` | `{status:"pinned" \| "unpinned", id, changed, count}` |
+| `merge` | `{status:"merged", keep, ended}` |
+
+`anchored` and `reanchored` appear only when there is something to report. The other write commands are being added separately; without `--json` every command keeps its sentence.
 
 Only a person runs `accept` and `reject`. If you have a shell, do not accept your own proposals.
 
