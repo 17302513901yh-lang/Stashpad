@@ -25,13 +25,13 @@ const day = (now) => now.toISOString().slice(0, 10);
 
 function readSummary(dir) {
   const path = join(sessionsDir(dir), LAST_SHOWN_FILE);
-  if (!existsSync(path) || !lstatSync(path).isFile()) return { since: null, last: {}, count: {} };
+  if (!existsSync(path) || !lstatSync(path).isFile()) return { since: null, last: Object.create(null), count: Object.create(null) };
   try {
     const data = JSON.parse(openText(dir, readFileSync(path, "utf8")));
-    return { since: typeof data.since === "string" ? data.since : null, last: data.last ?? {}, count: data.count ?? {}, ...(typeof data.pruned === "string" ? { pruned: data.pruned } : {}) };
+    return { since: typeof data.since === "string" ? data.since : null, last: Object.assign(Object.create(null), data.last), count: Object.assign(Object.create(null), data.count), ...(typeof data.pruned === "string" ? { pruned: data.pruned } : {}) };
   } catch (error) {
     if (error instanceof StoreError) throw error;
-    return { since: null, last: {}, count: {} };
+    return { since: null, last: Object.create(null), count: Object.create(null) };
   }
 }
 
@@ -109,7 +109,7 @@ export function lastShown(dir) {
   try {
     return readSummary(dir);
   } catch {
-    return { since: null, last: {}, count: {} };
+    return { since: null, last: Object.create(null), count: Object.create(null) };
   }
 }
 
