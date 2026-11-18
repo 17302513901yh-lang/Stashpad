@@ -92,9 +92,8 @@ export function recall(dir, prompt, { limit = 3, maxChars = DEFAULT_RECALL_CHARS
       const exact = r.matched.filter((m) => !m.endsWith("(synonym)") && m.length >= 4);
       return exact.length >= 2 || (terms.size <= 2 && exact.length >= 1) || (why && r.kind === "decision" && exact.length >= 1) || namesRejected(dir, r, exact);
     })
-    .sort((a, b) => (why ? (b.kind === "decision") - (a.kind === "decision") : 0))
-    .slice(0, limit);
-  if (hits.length === 0) return { text: "", hits: [] };
+    .sort((a, b) => (why ? (b.kind === "decision") - (a.kind === "decision") : 0));
+  if (limit === 0 || hits.length === 0) return { text: "", hits: [] };
   // Memories anchored to files say when those files changed; one whose files are all gone is skipped.
   const anchors = readAnchors(dir);
   const context = checkFiles && Object.keys(anchors).length ? anchorContext(projectRoot(dir, cwd), { moves: anchorMoves }) : null;
@@ -103,6 +102,7 @@ export function recall(dir, prompt, { limit = 3, maxChars = DEFAULT_RECALL_CHARS
   const shown = [];
   let gone = 0;
   for (const hit of hits) {
+    if (shown.length >= limit) break;
     const status = context && anchors[hit.id] ? safeCheck(dir, hit.id, anchors, context) : null;
     if (status?.gone) {
       gone += 1;
