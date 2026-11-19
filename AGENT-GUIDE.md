@@ -30,8 +30,14 @@ Add `--json` for machine-readable output. Commands that change the store print e
 | `confirm` | `{status:"confirmed", id, changed, reanchored?}` |
 | `pin` / `unpin` | `{status:"pinned" \| "unpinned", id, changed, count}` |
 | `merge` | `{status:"merged", keep, ended}` |
+| `forget` | `{status:"queued", id, target}` (an ending request waits for a person to accept it) |
+| `snapshot` | `{status:"created", name, files}` |
+| `restore` | `{status:"restored", name, files, undo}`; without `--yes` it is `{status:"dry-run", name}` and nothing changes |
+| `import` | `{status:"queued", queued, file, skipped}` (`skipped` holds `{id, reason}`; those also go to stderr) |
+| `handover` | `{status:"queued" \| "saved", id, path}` |
+| `synonym add` | `{status:"added" \| "duplicate", groups}` |
 
-`anchored` and `reanchored` appear only when there is something to report. The other write commands are being added separately; without `--json` every command keeps its sentence.
+`anchored` and `reanchored` appear only when there is something to report. Every write command now answers `--json`; without it every command keeps its sentence.
 
 Only a person runs `accept` and `reject`. If you have a shell, do not accept your own proposals.
 

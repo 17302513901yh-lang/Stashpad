@@ -392,3 +392,81 @@ test("write commands print one JSON object with --json (#75)", async () => {
   assert.equal(await run(["pin", "db-choice", "--dir", dir], plain.io), 0);
   assert.match(plain.out.join("\n"), /^Pinned db-choice \(1 pinned\)\.$/m);
 });
+
+// #75 (part 2): the other write commands used to ignore --json and print a
+// sentence (or two, for restore without --yes). Each must now print exactly
+// one JSON object on stdout, with warnings still on stderr (#104 continues).
+test("the remaining write commands print one JSON object with --json (#75)", async () => {
+  const runJson = async (args, code = 0) => {
+    const h = harness();
+    assert.equal(await run([...args, "--json"], h.io), code,
+      `${args.join(" ")}: ${h.err.join("\n")}`);
+    assert.equal(h.out.length, 1, `${args.join(" ")} prints one line on stdout`);
+    return { value: JSON.parse(h.out[0]), out: h.out, err: h.err };
+  };
+
+  // forget: an ending request is queued for a person to accept.
+  const dir = freshDir();
+  assert.equal(await run(saveArgs(dir, "old-fact"), harness().io), 0);
+  const forgot = await runJson(["forget", "old-fact", "--dir", dir, "--reason", "outdated"]);
+  assert.deepEqual(forgot.value, { status: "queued", id: "forget-old-fact", target: "old-fact" });
+  // Without --json the sentence is unchanged (fresh store: only one request per id).
+  const forgetPlainDir = freshDir();
+  assert.equal(await run(saveArgs(forgetPlainDir, "old-fact"), harness().io), 0);
+  const forgotPlain = harness();
+  assert.equal(await run(["forget", "old-fact", "--dir", forgetPlainDir, "--reason", "outdated"], forgotPlain.io), 0);
+  assert.match(forgotPlain.out.join("\n"), /^Asked for old-fact to end\. Accept it with: stashpad accept forget-old-fact$/);
+
+  // handover: saved directly for a user note.
+  const hand = await runJson(["handover", "--dir", dir, "--text", "Auth work is half done; next add tests."]);
+  assert.equal(hand.value.status, "saved");
+  assert.match(hand.value.id, /^handover-/);
+  assert.ok(hand.value.path);
+
+  // synonym add: a new group, then the same group (duplicate, no write).
+  const syn = await runJson(["synonym", "add", "k8s", "kubernetes", "--dir", dir]);
+  assert.deepEqual(syn.value, { status: "added", groups: 1 });
+  const synDup = await runJson(["synonym", "add", "Kubernetes", "k8s", "--dir", dir]);
+  assert.deepEqual(synDup.value, { status: "duplicate", groups: 1 });
+  const synPlain = harness();
+  assert.equal(await run(["synonym", "add", "pr", "pull-request", "--dir", dir], synPlain.io), 0);
+  assert.match(synPlain.out.join("\n"), /^Added\. 2 synonym group\(s\) in this store\.$/);
+
+  // snapshot and restore (dry-run first, then --yes).
+  const snap = await runJson(["snapshot", "--dir", dir, "--label", "Before test"]);
+  assert.equal(snap.value.status, "created");
+  assert.match(snap.value.name, /-before-test$/);
+  assert.equal(typeof snap.value.files, "number");
+  const name = snap.value.name;
+  const dry = await runJson(["restore", name, "--dir", dir]);
+  assert.deepEqual(dry.value, { status: "dry-run", name });
+  const restored = await runJson(["restore", name, "--dir", dir, "--yes"]);
+  assert.equal(restored.value.status, "restored");
+  assert.equal(restored.value.name, name);
+  assert.equal(typeof restored.value.files, "number");
+  assert.ok(restored.value.undo);
+  const snapPlain = harness();
+  assert.equal(await run(["snapshot", "--dir", dir, "--label", "Plain"], snapPlain.io), 0);
+  assert.match(snapPlain.out.join("\n"), /^Snapshot .* files\)\. Put it back with:/);
+
+  // import: one queued fact, two skipped (an ended item and a bad line).
+  // The skipped warnings stay on stderr; stdout still has exactly one object.
+  const file = join(dir, "export.jsonl");
+  writeFileSync(file, [
+    '{"id":"imp-a","kind":"fact","text":"An imported fact."}',
+    '{"id":"imp-b","kind":"fact","text":"Ended.","valid_to":"2020-01-01"}',
+    "not-json",
+  ].join("\n"));
+  const imp = await runJson(["import", file, "--dir", dir, "--format", "jsonl"]);
+  assert.equal(imp.value.status, "queued");
+  assert.equal(imp.value.queued, 1);
+  assert.equal(imp.value.file, file);
+  assert.equal(imp.value.skipped.length, 2);
+  assert.ok(imp.value.skipped.every((s) => typeof s.id === "string" && typeof s.reason === "string"));
+  assert.equal(imp.err.filter((l) => l.startsWith("skipped ")).length, 2);
+  // Plain import into a fresh store (a second import of imp-a into `dir` would
+  // be skipped as a duplicate, which is correct but not what this asserts).
+  const impPlain = harness();
+  assert.equal(await run(["import", file, "--dir", freshDir(), "--format", "jsonl"], impPlain.io), 0);
+  assert.match(impPlain.out.join("\n"), /^Queued 1 memories for review from /);
+});

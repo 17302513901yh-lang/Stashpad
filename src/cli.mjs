@@ -401,9 +401,13 @@ function cmdImport(io, dir, file, values) {
     sourceRef: values["source-ref"] ?? `import: ${file}`,
   });
   for (const item of skipped) io.stderr(`skipped ${item.id}: ${item.reason}`);
-  io.stdout(
-    `Queued ${queued.length} memories for review from ${file}. Nothing is searchable until a person accepts them (stashpad review).`,
-  );
+  if (values.json) {
+    io.stdout(JSON.stringify(defuseValues({ status: "queued", queued: queued.length, file, skipped })));
+  } else {
+    io.stdout(
+      `Queued ${queued.length} memories for review from ${file}. Nothing is searchable until a person accepts them (stashpad review).`,
+    );
+  }
   return skipped.length > 0 && queued.length === 0 ? 1 : 0;
 }
 
@@ -525,7 +529,8 @@ function cmdForget(io, dir, id, values) {
     return usageError(io, 'forget needs --reason, for example: stashpad forget db-choice --reason "outdated"');
   }
   queueForget(dir, id, values.reason, values["source-ref"] ?? "person, command line", "user");
-  io.stdout(`Asked for ${id} to end. Accept it with: stashpad accept forget-${id}`);
+  if (values.json) io.stdout(JSON.stringify(defuseValues({ status: "queued", id: `forget-${id}`, target: id })));
+  else io.stdout(`Asked for ${id} to end. Accept it with: stashpad accept forget-${id}`);
   return 0;
 }
 
@@ -706,11 +711,15 @@ async function cmdHandover(io, dir, values) {
     sourceRef: values["source-ref"] ?? "handover note",
     supersedes: sourceType === "user" ? previous : null,
   });
-  io.stdout(
-    result.status === "queued"
-      ? `Queued ${id} for review. It shows in the brief once a person accepts it.`
-      : `Saved ${id}. The next session sees it first in "stashpad brief".`,
-  );
+  if (values.json) {
+    io.stdout(JSON.stringify(defuseValues({ status: result.status, id, path: result.path })));
+  } else {
+    io.stdout(
+      result.status === "queued"
+        ? `Queued ${id} for review. It shows in the brief once a person accepts it.`
+        : `Saved ${id}. The next session sees it first in "stashpad brief".`,
+    );
+  }
   return 0;
 }
 
@@ -723,7 +732,8 @@ function cmdSyncAgents(io, dir, file) {
 
 function cmdSnapshot(io, dir, values) {
   const made = createSnapshot(dir, values.label ?? "manual");
-  io.stdout(`Snapshot ${made.name} (${made.files} files). Put it back with: stashpad restore ${made.name} --yes`);
+  if (values.json) io.stdout(JSON.stringify(defuseValues({ status: "created", name: made.name, files: made.files })));
+  else io.stdout(`Snapshot ${made.name} (${made.files} files). Put it back with: stashpad restore ${made.name} --yes`);
   return 0;
 }
 
@@ -740,12 +750,16 @@ function cmdSnapshots(io, dir, values) {
 
 function cmdRestore(io, dir, name, values) {
   if (values.yes !== true) {
-    io.stdout(`Would put snapshot ${name} back into ${dir}. The current state is snapshotted first, so this can be undone.`);
-    io.stdout("Nothing changed. Run again with --yes to do it.");
+    if (values.json) io.stdout(JSON.stringify(defuseValues({ status: "dry-run", name })));
+    else {
+      io.stdout(`Would put snapshot ${name} back into ${dir}. The current state is snapshotted first, so this can be undone.`);
+      io.stdout("Nothing changed. Run again with --yes to do it.");
+    }
     return 0;
   }
   const done = restoreSnapshot(dir, name);
-  io.stdout(`Restored ${done.restored} (${done.files} files). Undo with: stashpad restore ${done.safety} --yes`);
+  if (values.json) io.stdout(JSON.stringify(defuseValues({ status: "restored", name: done.restored, files: done.files, undo: done.safety })));
+  else io.stdout(`Restored ${done.restored} (${done.files} files). Undo with: stashpad restore ${done.safety} --yes`);
   return 0;
 }
 
@@ -1011,7 +1025,8 @@ export async function run(argv, io = defaultIo()) {
       case "synonym": {
         if (id !== "add") return usageError(io, "use: stashpad synonym add <word> <word...>");
         const done = addSynonyms(dir, positionals.slice(2));
-        io.stdout(`${done.duplicate ? "Already there" : "Added"}. ${done.groups} synonym group(s) in this store.`);
+        if (values.json) io.stdout(JSON.stringify(defuseValues({ status: done.duplicate ? "duplicate" : "added", groups: done.groups })));
+        else io.stdout(`${done.duplicate ? "Already there" : "Added"}. ${done.groups} synonym group(s) in this store.`);
         return 0;
       }
       case "duplicates": {
